@@ -29,7 +29,19 @@
 
 .inputEle{
   height: 4ch;
-  width: 29ch;
+  width: 30ch;
+}
+
+.inputEleShortLeft{
+  margin-right: 0.25em;
+  height: 4ch;
+  width: 14.5ch;
+}
+
+.inputEleShortRight{
+  margin-left: 0.25em;
+  height: 4ch;
+  width: 14.5ch;
 }
 
 .chartContainer{

@@ -1,6 +1,6 @@
 import React, { Component } from 'react'
 import CanvasJSReact from './canvasjs.react';
-import { Form, Button, Divider, Grid, Segment } from 'semantic-ui-react'
+import { Button, Divider, Grid, Segment } from 'semantic-ui-react'
 import Select from 'react-select'
 import makeAnimated from 'react-select/animated';
 import PolicyGraph from './PolicyGraph'
@@ -139,6 +139,7 @@ class PanelComponent extends Component {
             dpPrivacy: null,  // the privacy loss for differential privacy
             queryResult: false,  // if this is true, we will visualize the query results
             res: null,
+            queryGranularity: null,  // the granularity of the current query
         }
 
         this.getButtonsUsingMap = this.getButtonsUsingMap.bind(this)
@@ -154,7 +155,9 @@ class PanelComponent extends Component {
             policyVisualization: false,
             currentCatPolicy: null,
             visualNumPolicy: null,
-            currentNumPolicy: null
+            currentNumPolicy: null,
+            queryResult: false,
+            attrPolicy: false
         });
         // console.log(this.state.defaultPolicy)
         let delPolicy = null;
@@ -170,15 +173,11 @@ class PanelComponent extends Component {
                     })
                 }
             }
-            if (diff <= 100) {
-                delPolicy = { attrName: attrName, policy: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] }
-            } else if (diff <= 1000) {
-                delPolicy = { attrName: attrName, policy: [5, 10, 15, 20, 25, 30, 35, 40, 45, 50] }
-            } else if (diff <= 10000) {
-                delPolicy = { attrName: attrName, policy: [10, 20, 30, 40, 50, 60, 70, 80, 90, 100] }
-            } else {
-                delPolicy = { attrName: attrName, policy: [50, 100, 150, 200, 250, 300, 350, 400, 450, 500] }
+            let curPolicy = [];
+            for (let i = 1; i < diff + 1; ++i) {
+                curPolicy = curPolicy.concat(i)
             }
+            delPolicy = { attrName: attrName, policy: curPolicy }
         } else {
             let senSet = null;
             for (let i = 0; i < this.state.databaseDomain.length; ++i) {
@@ -212,7 +211,7 @@ class PanelComponent extends Component {
     // visualize policy graph when pressing the button
     // pass the attribute the visualize into the function
     policyGraph = () => {
-        if (this.state.policyVisualization) {
+        if (this.state.policyVisualization && this.state.attrClicked) {
             if (this.state.selectedType === 'categorical') {
                 // only handle the categorical data now
                 return (
@@ -220,6 +219,7 @@ class PanelComponent extends Component {
                         attrType={this.state.selectedType}
                         attributeDomain={this.state.defaultPolicy}
                         sensitiveSet={this.state.currentCatPolicy}
+                        granularity={this.state.queryGranularity}
                     />
                 )
             } else {
@@ -305,15 +305,9 @@ class PanelComponent extends Component {
         // this will be the api request for numerical values
         console.log(this.state.selectedType)
         let threshold_array = [];
-        let sensitiveSet = null;
+        let sensitiveSet = [];
         if (this.state.selectedType === 'numerical') {
             // compute the threshold
-            if (this.state.currentPolicy !== null) {
-                threshold_array = this.state.currentPolicy.split(',')
-                for (let i = 0; i < threshold_array.length; ++i) {
-                    threshold_array[i] = Number(threshold_array[i])
-                }
-            }
             if (this.state.currentNumPolicy !== null) {
                 for (let i = 0; i < this.state.currentNumPolicy.length; ++i) {
                     threshold_array = threshold_array.concat(this.state.currentNumPolicy[i].value)
@@ -324,16 +318,14 @@ class PanelComponent extends Component {
             });
         } else {
             // compute the sensitivity set
-            if (this.state.currentPolicy !== null) {
-                if (this.state.currentCatPolicy.length > 1) {
-                    sensitiveSet = [this.state.currentCatPolicy]
-                } else {
-                    sensitiveSet = this.state.currentCatPolicy.split(',')
-                }
-                for (let i = 0; i < sensitiveSet.length; ++i) {
-                    sensitiveSet[i] = sensitiveSet[i].value;
+            console.log('We enter here')
+            console.log(this.state.currentCatPolicy)
+            if (this.state.currentCatPolicy !== null) {
+                for (let i = 0; i < this.state.currentCatPolicy.length; ++i) {
+                    sensitiveSet = sensitiveSet.concat(this.state.currentCatPolicy[i].value)
                 }
             }
+            console.log('This is the sensitivity set: ', sensitiveSet)
         }
         console.log(threshold_array);
         this.setState({
@@ -344,7 +336,78 @@ class PanelComponent extends Component {
         const url = '/'
         // workload is hardcoded here, needs to be dynamically defined
         const data = {
-            "workload": ["17<=age and age <18", "18<=age and age <19", "19<=age and age <20", "20<=age and age <21", "21<=age and age <22", "22<=age and age <23", "23<=age and age <24", "24<=age and age <25", "25<=age and age <26", "26<=age and age <27", "27<=age and age <28", "28<=age and age <29", "29<=age and age <30", "30<=age and age <31", "31<=age and age <32", "32<=age and age <33", "33<=age and age <34", "34<=age and age <35", "35<=age and age <36", "36<=age and age <37", "37<=age and age <38", "38<=age and age <39", "39<=age and age <40", "40<=age and age <41", "41<=age and age <42", "42<=age and age <43", "43<=age and age <44", "44<=age and age <45", "45<=age and age <46", "46<=age and age <47", "47<=age and age <48", "48<=age and age <49", "49<=age and age <50", "50<=age and age <51", "51<=age and age <52", "52<=age and age <53", "53<=age and age <54", "54<=age and age <55", "55<=age and age <56", "56<=age and age <57", "57<=age and age <58", "58<=age and age <59", "59<=age and age <60", "60<=age and age <61", "61<=age and age <62", "62<=age and age <63", "63<=age and age <64", "64<=age and age <65", "65<=age and age <66", "66<=age and age <67", "67<=age and age <68", "68<=age and age <69", "69<=age and age <70", "70<=age and age <71", "71<=age and age <72", "72<=age and age <73", "73<=age and age <74", "74<=age and age <75", "75<=age and age <76", "76<=age and age <77", "77<=age and age <78", "78<=age and age <79", "79<=age and age <80", "80<=age and age <81", "81<=age and age <82", "82<=age and age <83", "83<=age and age <84", "84<=age and age <85", "85<=age and age <86", "86<=age and age <87", "87<=age and age <88", "88<=age and age <89"],
+            "workload": ["17<=age and age <18",
+                "18<=age and age <19",
+                "19<=age and age <20",
+                "20<=age and age <21",
+                "21<=age and age <22",
+                "22<=age and age <23",
+                "23<=age and age <24",
+                "24<=age and age <25",
+                "25<=age and age <26",
+                "26<=age and age <27",
+                "27<=age and age <28",
+                "28<=age and age <29",
+                "29<=age and age <30",
+                "30<=age and age <31",
+                "31<=age and age <32",
+                "32<=age and age <33",
+                "33<=age and age <34",
+                "34<=age and age <35",
+                "35<=age and age <36",
+                "36<=age and age <37",
+                "37<=age and age <38",
+                "38<=age and age <39",
+                "39<=age and age <40",
+                "40<=age and age <41",
+                "41<=age and age <42",
+                "42<=age and age <43",
+                "43<=age and age <44",
+                "44<=age and age <45",
+                "45<=age and age <46",
+                "46<=age and age <47",
+                "47<=age and age <48",
+                "48<=age and age <49",
+                "49<=age and age <50",
+                "50<=age and age <51",
+                "51<=age and age <52",
+                "52<=age and age <53",
+                "53<=age and age <54",
+                "54<=age and age <55",
+                "55<=age and age <56",
+                "56<=age and age <57",
+                "57<=age and age <58",
+                "58<=age and age <59",
+                "59<=age and age <60",
+                "60<=age and age <61",
+                "61<=age and age <62",
+                "62<=age and age <63",
+                "63<=age and age <64",
+                "64<=age and age <65",
+                "65<=age and age <66",
+                "66<=age and age <67",
+                "67<=age and age <68",
+                "68<=age and age <69",
+                "69<=age and age <70",
+                "70<=age and age <71",
+                "71<=age and age <72",
+                "72<=age and age <73",
+                "73<=age and age <74",
+                "74<=age and age <75",
+                "75<=age and age <76",
+                "76<=age and age <77",
+                "77<=age and age <78",
+                "78<=age and age <79",
+                "79<=age and age <80",
+                "80<=age and age <81",
+                "81<=age and age <82",
+                "82<=age and age <83",
+                "83<=age and age <84",
+                "84<=age and age <85",
+                "85<=age and age <86",
+                "86<=age and age <87",
+                "87<=age and age <88",
+                "88<=age and age <89"],
             "attrName": "age",
             "attrType": "Numerical",
             "thresholds": threshold_array
@@ -396,6 +459,8 @@ class PanelComponent extends Component {
 
     // define policy and accuracy here
     policyPanel = () => {
+        // we want to assign granularity Options dynamically
+        console.log('This is the default policy(Granularity): ', this.state.defaultPolicy)
         if (this.state.attrClicked) {
             if (this.state.selectedType === 'numerical') {
                 return (
@@ -407,10 +472,9 @@ class PanelComponent extends Component {
                             Attribute Type: {this.state.selectedType}
                         </Grid.Row>
                         <Grid.Row>
-                            <label className='attr'>Select Workload:</label>
                             <Select
                                 placeholder='workload'
-                                className='inputEle'
+                                className='inputEleShortLeft'
                                 options={workloadOptions}
                                 onChange={(event) => {
                                     this.setState({
@@ -419,12 +483,24 @@ class PanelComponent extends Component {
                                     })
                                 }}>
                             </Select>
+                            <Select
+                                options={this.state.defaultPolicy}
+                                placeholder='granularity'
+                                className='inputEleShortRight'
+                                onChange={(event) => {
+                                    console.log(event);
+                                    this.setState({
+                                        queryGranularity: event.value
+                                    })
+                                }
+                                }
+                            />
                         </Grid.Row>
                         <Grid.Row>
                             <Select
                                 options={alphaOptions}
                                 placeholder='alpha'
-                                className='inputEle'
+                                className='inputEleShortLeft'
                                 onChange={(event) => {
                                     // console.log(event);
                                     // set alpha and beta to the current selected values
@@ -432,12 +508,10 @@ class PanelComponent extends Component {
                                         alpha: event.value
                                     })
                                 }} />
-                        </Grid.Row>
-                        <Grid.Row>
                             <Select
                                 options={betaOptions}
                                 placeholder='beta'
-                                className='inputEle'
+                                className='inputEleShortRight'
                                 onChange={(event) => {
                                     // console.log(event);
                                     this.setState({
@@ -452,20 +526,7 @@ class PanelComponent extends Component {
                         </Grid.Row>
                         <Grid.Row></Grid.Row>
                         <Grid.Row></Grid.Row>
-                        <Grid.Row className='attr'> Custome Thresholds:
-                            <Form.Group vertical>
-                                <Form.Input
-                                    style={{ height: 40, width: 235 }}
-                                    id='input-attr'
-                                    placeholder='Thresholds'
-                                    onChange={event => {
-                                        this.setState({
-                                            currentPolicy: event.target.value
-                                        })
-                                    }}
-                                ></Form.Input>
-                            </Form.Group>
-                        </Grid.Row>
+                        <Grid.Row></Grid.Row>
                         <Grid.Row style={{ margin: '0.3em', height: 60 }}>
                             <Button
                                 onClick={() =>
@@ -510,7 +571,7 @@ class PanelComponent extends Component {
                             <Select
                                 options={alphaOptions}
                                 placeholder='alpha'
-                                className='inputEle'
+                                className='inputEleShortLeft'
                                 onChange={(event) => {
                                     // console.log(event);
                                     // set alpha and beta to the current selected values
@@ -518,12 +579,10 @@ class PanelComponent extends Component {
                                         alpha: event.value
                                     })
                                 }} />
-                        </Grid.Row>
-                        <Grid.Row>
                             <Select
                                 options={betaOptions}
                                 placeholder='beta'
-                                className='inputEle'
+                                className='inputEleShortRight'
                                 onChange={(event) => {
                                     // console.log(event);
                                     this.setState({
@@ -548,8 +607,8 @@ class PanelComponent extends Component {
                                 } style={{ width: 230, height: 40 }}>Visualize Policy</Button>
                         </Grid.Row>
                         <Grid.Row >
-                            <Button onClick={() =>
-                                this.submitPolicy(this.state.currentPolicy)
+                            <Button onClick={
+                                this.toggleButtonState
                             } style={{ width: 235, height: 40 }}>Confirm</Button>
                         </Grid.Row>
                     </Grid>
@@ -575,7 +634,7 @@ class PanelComponent extends Component {
     // used to generate policy graphes
     // all workload, policy, and the alpha and beta can be found in the state
     privacyPanelTheshold = () => {
-        var CanvasJS = CanvasJSReact.CanvasJS;
+        // var CanvasJS = CanvasJSReact.CanvasJS;
         var CanvasJSChart = CanvasJSReact.CanvasJSChart;
         let privacyPoints = [];
         let dpVal = this.state.dpPrivacy;
@@ -605,7 +664,8 @@ class PanelComponent extends Component {
             axisX: {
                 title: "Thresholds",
                 titleFontFamily: "cursive",
-                titleFontSize: 16
+                titleFontSize: 16,
+                interval: 1
             },
             axisY: {
                 title: "Privacy Loss",
@@ -692,7 +752,7 @@ class PanelComponent extends Component {
     }
 
     displayRes = () => {
-        var CanvasJS = CanvasJSReact.CanvasJS;
+        // var CanvasJS = CanvasJSReact.CanvasJS;
         var CanvasJSChart = CanvasJSReact.CanvasJSChart;
         console.log('-')
         console.log(this.state.res);

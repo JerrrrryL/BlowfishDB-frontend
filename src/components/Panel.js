@@ -157,9 +157,10 @@ class PanelComponent extends Component {
             visualNumPolicy: null,
             currentNumPolicy: null,
             queryResult: false,
-            attrPolicy: false
+            attrPolicy: false,
+            currentWorkload: null,
         });
-        // console.log(this.state.defaultPolicy)
+        console.log(this.state.defaultPolicy)
         let delPolicy = null;
         if (attrType === 'numerical') {
             // set the default thresholds, we will set display 10 threshold values
@@ -174,8 +175,20 @@ class PanelComponent extends Component {
                 }
             }
             let curPolicy = [];
-            for (let i = 1; i < diff + 1; ++i) {
-                curPolicy = curPolicy.concat(i)
+            // if the difference is too big, it will stuck here
+            if (diff < 100) {
+                for (let i = 1; i < diff + 1; ++i) {
+                    curPolicy = curPolicy.concat(i)
+                }
+            } else {
+                for (let i = 1; i < 100; ++i) {
+                    curPolicy = curPolicy.concat(i)
+                }
+                // we will add some default thresholds that are big
+                for (let i = 1; i < 11; ++i) {
+                    curPolicy = curPolicy.concat(100 * i)
+                }
+
             }
             delPolicy = { attrName: attrName, policy: curPolicy }
         } else {
@@ -187,12 +200,12 @@ class PanelComponent extends Component {
             }
             delPolicy = { attrName: attrName, policy: senSet };
         }
-        // console.log(delPolicy)
+        console.log('This is the delPolicy', delPolicy)
         let options = [];
         for (let i = 0; i < delPolicy.policy.length; ++i) {
             options = options.concat({ value: delPolicy.policy[i], label: delPolicy.policy[i].toString() })
         }
-        // console.log(options)
+        console.log('This is the options: ', options)
         this.setState({
             attrClicked: true,
             selectedAttr: attrName,
@@ -299,10 +312,6 @@ class PanelComponent extends Component {
 
     // after confirmation, we submit the result to the api
     toggleButtonState = () => {
-        console.log('================')
-        console.log(this.state.currentCatPolicy)
-        console.log('================')
-        // this will be the api request for numerical values
         console.log(this.state.selectedType)
         let threshold_array = [];
         let sensitiveSet = [];
@@ -318,8 +327,6 @@ class PanelComponent extends Component {
             });
         } else {
             // compute the sensitivity set
-            console.log('We enter here')
-            console.log(this.state.currentCatPolicy)
             if (this.state.currentCatPolicy !== null) {
                 for (let i = 0; i < this.state.currentCatPolicy.length; ++i) {
                     sensitiveSet = sensitiveSet.concat(this.state.currentCatPolicy[i].value)
@@ -327,130 +334,158 @@ class PanelComponent extends Component {
             }
             console.log('This is the sensitivity set: ', sensitiveSet)
         }
-        console.log(threshold_array);
         this.setState({
             privacyThresholds: threshold_array
         })
-        // add a huge threshold to derive result for differential privacy
-        threshold_array = threshold_array.concat(Number.MAX_SAFE_INTEGER);
-        const url = '/'
-        // workload is hardcoded here, needs to be dynamically defined
-        const data = {
-            "workload": ["17<=age and age <18",
-                "18<=age and age <19",
-                "19<=age and age <20",
-                "20<=age and age <21",
-                "21<=age and age <22",
-                "22<=age and age <23",
-                "23<=age and age <24",
-                "24<=age and age <25",
-                "25<=age and age <26",
-                "26<=age and age <27",
-                "27<=age and age <28",
-                "28<=age and age <29",
-                "29<=age and age <30",
-                "30<=age and age <31",
-                "31<=age and age <32",
-                "32<=age and age <33",
-                "33<=age and age <34",
-                "34<=age and age <35",
-                "35<=age and age <36",
-                "36<=age and age <37",
-                "37<=age and age <38",
-                "38<=age and age <39",
-                "39<=age and age <40",
-                "40<=age and age <41",
-                "41<=age and age <42",
-                "42<=age and age <43",
-                "43<=age and age <44",
-                "44<=age and age <45",
-                "45<=age and age <46",
-                "46<=age and age <47",
-                "47<=age and age <48",
-                "48<=age and age <49",
-                "49<=age and age <50",
-                "50<=age and age <51",
-                "51<=age and age <52",
-                "52<=age and age <53",
-                "53<=age and age <54",
-                "54<=age and age <55",
-                "55<=age and age <56",
-                "56<=age and age <57",
-                "57<=age and age <58",
-                "58<=age and age <59",
-                "59<=age and age <60",
-                "60<=age and age <61",
-                "61<=age and age <62",
-                "62<=age and age <63",
-                "63<=age and age <64",
-                "64<=age and age <65",
-                "65<=age and age <66",
-                "66<=age and age <67",
-                "67<=age and age <68",
-                "68<=age and age <69",
-                "69<=age and age <70",
-                "70<=age and age <71",
-                "71<=age and age <72",
-                "72<=age and age <73",
-                "73<=age and age <74",
-                "74<=age and age <75",
-                "75<=age and age <76",
-                "76<=age and age <77",
-                "77<=age and age <78",
-                "78<=age and age <79",
-                "79<=age and age <80",
-                "80<=age and age <81",
-                "81<=age and age <82",
-                "82<=age and age <83",
-                "83<=age and age <84",
-                "84<=age and age <85",
-                "85<=age and age <86",
-                "86<=age and age <87",
-                "87<=age and age <88",
-                "88<=age and age <89"],
-            "attrName": "age",
-            "attrType": "Numerical",
-            "thresholds": threshold_array
-        }
-        const headers = new Headers();
-        headers.append('Content-Type', 'application/json')
+        console.log('Current threshold array: ', threshold_array)
+        if (threshold_array.length === 0 || this.state.currentWorkload === null) {
+            if (threshold_array.length === 0) {
+                alert("Please specify thresholds/sensitivity sets")
+            } else {
+                alert("Please choose the workload type")
+            }
+        } else {
+            // add a huge threshold to derive result for differential privacy
+            threshold_array = threshold_array.concat(Number.MAX_SAFE_INTEGER);
+            const url = '/'
+            // workload is hardcoded here, needs to be dynamically defined
+            // in the backend, we need the granularity, the workload will be dynamic according to the granularity
+            // we only need to try different thresholds
 
-        const requestOption = {
-            method: 'POST',
-            headers,
-            body: JSON.stringify(data)
-        }
-        const request = new Request(url, requestOption)
-        fetch(request).then((response) => response.json())
-            .then((data) => {
-                // after fetching api response, plot the privacy loss graph here
-                let epsilons = [];
-                let trueAns = [];
-                let noisyAns = [];
-                const res = data.results;
-                for (let i = 0; i < res.length - 1; ++i) {
-                    epsilons = epsilons.concat(res[i].eps_max);
-                    let trueAnsObj = {
-                        'trueRes': res[i].true_answer
-                    }
-                    let noisyAnsObj = {
-                        'noisyAns': res[i].noisy_answer
-                    }
-                    trueAns = trueAns.concat(trueAnsObj);
-                    noisyAns = noisyAns.concat(noisyAnsObj);
+            if (this.state.selectedType === 'numerical') {
+                let queryGranu = null;
+                if (this.state.queryGranularity === null) {
+                    queryGranu = 1;
+                } else {
+                    queryGranu = this.state.queryGranularity
                 }
-                console.log('---------------------');
-                console.log(epsilons);
-                // get the epsilons and true answers
-                this.setState({
-                    attrPolicy: true,
-                    apiRespond: epsilons,
-                    trueRes: trueAns,
-                    noisyRes: noisyAns,
-                    dpPrivacy: res[res.length - 1].eps_max
-                })
-            })
-            .catch((err) => console.log(err))
+                console.log('This is the current workload: ', this.state.currentWorkload)
+                const data = {
+                    "workload": this.state.currentWorkload,
+                    "granularity": queryGranu,
+                    "attrName": this.state.selectedAttr,
+                    "attrType": this.state.selectedType,
+                    "thresholds": threshold_array
+                }
+
+                // TODO: need alerts to make sure the granularity and the attrNa
+                console.log("This is the API request Data", data)
+                const headers = new Headers();
+                headers.append('Content-Type', 'application/json')
+
+                const requestOption = {
+                    method: 'POST',
+                    headers,
+                    body: JSON.stringify(data)
+                }
+                const request = new Request(url, requestOption)
+                fetch(request).then((response) => response.json())
+                    .then((data) => {
+                        // after fetching api response, plot the privacy loss graph here
+                        let epsilons = [];
+                        let trueAns = [];
+                        let noisyAns = [];
+                        const res = data.results;
+                        for (let i = 0; i < res.length - 1; ++i) {
+                            epsilons = epsilons.concat(res[i].eps_max);
+                            let trueAnsObj = {
+                                'trueRes': res[i].true_answer
+                            }
+                            let noisyAnsObj = {
+                                'noisyAns': res[i].noisy_answer
+                            }
+                            trueAns = trueAns.concat(trueAnsObj);
+                            noisyAns = noisyAns.concat(noisyAnsObj);
+                        }
+                        // get the epsilons and true answers
+                        this.setState({
+                            attrPolicy: true,
+                            apiRespond: epsilons,
+                            trueRes: trueAns,
+                            noisyRes: noisyAns,
+                            dpPrivacy: res[res.length - 1].eps_max
+                        })
+                    })
+                    .catch((err) => console.log(err))
+            }
+            // const data = {
+            //     "workload": ["17<=age and age <18",
+            //         "18<=age and age <19",
+            //         "19<=age and age <20",
+            //         "20<=age and age <21",
+            //         "21<=age and age <22",
+            //         "22<=age and age <23",
+            //         "23<=age and age <24",
+            //         "24<=age and age <25",
+            //         "25<=age and age <26",
+            //         "26<=age and age <27",
+            //         "27<=age and age <28",
+            //         "28<=age and age <29",
+            //         "29<=age and age <30",
+            //         "30<=age and age <31",
+            //         "31<=age and age <32",
+            //         "32<=age and age <33",
+            //         "33<=age and age <34",
+            //         "34<=age and age <35",
+            //         "35<=age and age <36",
+            //         "36<=age and age <37",
+            //         "37<=age and age <38",
+            //         "38<=age and age <39",
+            //         "39<=age and age <40",
+            //         "40<=age and age <41",
+            //         "41<=age and age <42",
+            //         "42<=age and age <43",
+            //         "43<=age and age <44",
+            //         "44<=age and age <45",
+            //         "45<=age and age <46",
+            //         "46<=age and age <47",
+            //         "47<=age and age <48",
+            //         "48<=age and age <49",
+            //         "49<=age and age <50",
+            //         "50<=age and age <51",
+            //         "51<=age and age <52",
+            //         "52<=age and age <53",
+            //         "53<=age and age <54",
+            //         "54<=age and age <55",
+            //         "55<=age and age <56",
+            //         "56<=age and age <57",
+            //         "57<=age and age <58",
+            //         "58<=age and age <59",
+            //         "59<=age and age <60",
+            //         "60<=age and age <61",
+            //         "61<=age and age <62",
+            //         "62<=age and age <63",
+            //         "63<=age and age <64",
+            //         "64<=age and age <65",
+            //         "65<=age and age <66",
+            //         "66<=age and age <67",
+            //         "67<=age and age <68",
+            //         "68<=age and age <69",
+            //         "69<=age and age <70",
+            //         "70<=age and age <71",
+            //         "71<=age and age <72",
+            //         "72<=age and age <73",
+            //         "73<=age and age <74",
+            //         "74<=age and age <75",
+            //         "75<=age and age <76",
+            //         "76<=age and age <77",
+            //         "77<=age and age <78",
+            //         "78<=age and age <79",
+            //         "79<=age and age <80",
+            //         "80<=age and age <81",
+            //         "81<=age and age <82",
+            //         "82<=age and age <83",
+            //         "83<=age and age <84",
+            //         "84<=age and age <85",
+            //         "85<=age and age <86",
+            //         "86<=age and age <87",
+            //         "87<=age and age <88",
+            //         "88<=age and age <89"],
+            //     "attrName": "age",
+            //     "attrType": "Numerical",
+            //     "thresholds": threshold_array
+            // }
+        }
     }
 
     // This weekend TODO: Compute the privacy loss given the templates, and generate graphs
@@ -460,7 +495,6 @@ class PanelComponent extends Component {
     // define policy and accuracy here
     policyPanel = () => {
         // we want to assign granularity Options dynamically
-        console.log('This is the default policy(Granularity): ', this.state.defaultPolicy)
         if (this.state.attrClicked) {
             if (this.state.selectedType === 'numerical') {
                 return (
@@ -476,6 +510,7 @@ class PanelComponent extends Component {
                                 placeholder='workload'
                                 className='inputEleShortLeft'
                                 options={workloadOptions}
+                                value={this.state.currentWorkload}
                                 onChange={(event) => {
                                     this.setState({
                                         workloadSelected: true,
@@ -487,6 +522,7 @@ class PanelComponent extends Component {
                                 options={this.state.defaultPolicy}
                                 placeholder='granularity'
                                 className='inputEleShortRight'
+                                defaultInputValue='1'
                                 onChange={(event) => {
                                     console.log(event);
                                     this.setState({
@@ -501,6 +537,7 @@ class PanelComponent extends Component {
                                 options={alphaOptions}
                                 placeholder='alpha'
                                 className='inputEleShortLeft'
+                                value={this.state.alpha}
                                 onChange={(event) => {
                                     // console.log(event);
                                     // set alpha and beta to the current selected values
@@ -512,6 +549,7 @@ class PanelComponent extends Component {
                                 options={betaOptions}
                                 placeholder='beta'
                                 className='inputEleShortRight'
+                                value={this.state.beta}
                                 onChange={(event) => {
                                     // console.log(event);
                                     this.setState({
@@ -754,8 +792,6 @@ class PanelComponent extends Component {
     displayRes = () => {
         // var CanvasJS = CanvasJSReact.CanvasJS;
         var CanvasJSChart = CanvasJSReact.CanvasJSChart;
-        console.log('-')
-        console.log(this.state.res);
         const options = {
             height: 330,
             width: 400,

@@ -159,6 +159,7 @@ class PanelComponent extends Component {
             queryResult: false,
             attrPolicy: false,
             currentWorkload: null,
+            queryGranularity: null,
         });
         console.log(this.state.defaultPolicy)
         let delPolicy = null;
@@ -332,7 +333,6 @@ class PanelComponent extends Component {
                     sensitiveSet = sensitiveSet.concat(this.state.currentCatPolicy[i].value)
                 }
             }
-            console.log('This is the sensitivity set: ', sensitiveSet)
         }
         this.setState({
             privacyThresholds: threshold_array
@@ -488,15 +488,41 @@ class PanelComponent extends Component {
         }
     }
 
-    // This weekend TODO: Compute the privacy loss given the templates, and generate graphs
 
-    // TODO: Provide True answers/Noisy Answers for running the workload, generate graph
+    // The following 3 functions to handle selection in the interface
+    handleChangeWorkload = value => {
+        this.setState({
+            workloadSelected: true,
+            currentWorkload: value
+        })
+    };
 
-    // define policy and accuracy here
+    handleChangeAlpha = value => {
+        this.setState({
+            alpha: value
+        })
+    };
+
+    handleChangeBeta = value => {
+        this.setState({
+            beta: value
+        })
+    };
+
+    handleChangeGranularity = value => {
+        this.setState({
+            queryGranularity: value
+        })
+    }
+
     policyPanel = () => {
         // we want to assign granularity Options dynamically
         if (this.state.attrClicked) {
             if (this.state.selectedType === 'numerical') {
+                const { currentWorkload } = this.state
+                const { alpha } = this.state
+                const { beta } = this.state
+                const { queryGranularity } = this.state
                 return (
                     <Grid padding textAlign='left' style={{ margin_bottom: '0.1em', height: 20 }}>
                         <Grid.Row className='attr'>
@@ -510,26 +536,16 @@ class PanelComponent extends Component {
                                 placeholder='workload'
                                 className='inputEleShortLeft'
                                 options={workloadOptions}
-                                value={this.state.currentWorkload}
-                                onChange={(event) => {
-                                    this.setState({
-                                        workloadSelected: true,
-                                        currentWorkload: event.value // one of histo, 1D-cdf or 2d-cdf
-                                    })
-                                }}>
+                                value={currentWorkload}
+                                onChange={this.handleChangeWorkload}
+                            >
                             </Select>
                             <Select
                                 options={this.state.defaultPolicy}
                                 placeholder='granularity'
                                 className='inputEleShortRight'
-                                defaultInputValue='1'
-                                onChange={(event) => {
-                                    console.log(event);
-                                    this.setState({
-                                        queryGranularity: event.value
-                                    })
-                                }
-                                }
+                                value={queryGranularity}
+                                onChange={this.handleChangeGranularity}
                             />
                         </Grid.Row>
                         <Grid.Row>
@@ -537,26 +553,14 @@ class PanelComponent extends Component {
                                 options={alphaOptions}
                                 placeholder='alpha'
                                 className='inputEleShortLeft'
-                                value={this.state.alpha}
-                                onChange={(event) => {
-                                    // console.log(event);
-                                    // set alpha and beta to the current selected values
-                                    this.setState({
-                                        alpha: event.value
-                                    })
-                                }} />
+                                value={alpha}
+                                onChange={this.handleChangeAlpha} />
                             <Select
                                 options={betaOptions}
                                 placeholder='beta'
                                 className='inputEleShortRight'
-                                value={this.state.beta}
-                                onChange={(event) => {
-                                    // console.log(event);
-                                    this.setState({
-                                        beta: event.value
-                                    })
-                                }
-                                }
+                                value={beta}
+                                onChange={this.handleChangeBeta}
                             />
                         </Grid.Row>
                         <Grid.Row>

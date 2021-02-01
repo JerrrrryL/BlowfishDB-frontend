@@ -138,12 +138,16 @@ class PanelComponent extends Component {
             privacyThresholds: [], // the x values for privacy analysis
             dpPrivacy: null,  // the privacy loss for differential privacy
             queryResult: false,  // if this is true, we will visualize the query results
-            res: null,
             queryGranularity: null,  // the granularity of the current query
+            granularityLabels: null,  // the granularity labels for the granularity specified above
+            selectedTrueAns: [],  // the true counts of selected query
+            selectedNoisyAns: [],  // the noisy counts of selected query
+            queryAccuracy: [],  // the accuracy of the queries
+            selectedAccuracy: null,  // the accuracy of the selected queries
         }
 
-        this.getButtonsUsingMap = this.getButtonsUsingMap.bind(this)
-        this.queryComplete = this.queryComplete.bind(this)
+        this.getButtonsUsingMap = this.getButtonsUsingMap.bind(this);
+        this.queryComplete = this.queryComplete.bind(this);
     }
 
     // attribute selection on click
@@ -160,6 +164,9 @@ class PanelComponent extends Component {
             attrPolicy: false,
             currentWorkload: null,
             queryGranularity: null,
+            granularityLabels: null,
+            queryAccuracy: [],
+            selectedAccuracy: null,
         });
         console.log(this.state.defaultPolicy)
         let delPolicy = null;
@@ -201,12 +208,12 @@ class PanelComponent extends Component {
             }
             delPolicy = { attrName: attrName, policy: senSet };
         }
-        console.log('This is the delPolicy', delPolicy)
+        // console.log('This is the delPolicy', delPolicy)
         let options = [];
         for (let i = 0; i < delPolicy.policy.length; ++i) {
             options = options.concat({ value: delPolicy.policy[i], label: delPolicy.policy[i].toString() })
         }
-        console.log('This is the options: ', options)
+        // console.log('This is the options: ', options)
         this.setState({
             attrClicked: true,
             selectedAttr: attrName,
@@ -214,6 +221,37 @@ class PanelComponent extends Component {
             defaultPolicy: options
         });
     };
+
+    // compute the granularity of the query
+    // store this in the state since both the query results, and the policy graph visualization needs this
+    // to avoid recomputing, only call this when the variable in the state is null 
+    // call this function when either Confirm/Visualization is pressed
+    computeGranularity = () => {
+        console.log('Enter compute Granularity')
+        if (this.state.granularityLabels === null) {
+            let selectedGranu = this.state.queryGranularity;
+            // sanity check, assign defaut to be 1 if null
+            if (selectedGranu === null) {
+                selectedGranu = 1
+            } else {
+                selectedGranu = selectedGranu.value
+            }
+            let lowerBound = this.state.currentNumericalDomain.domain[0];
+            let upperBound = this.state.currentNumericalDomain.domain[1];
+            let granuLabels = [];
+            let numEle = Math.ceil((upperBound - lowerBound + 1) / selectedGranu)
+            for (let i = 0; i < numEle; ++i) {
+                granuLabels = granuLabels.concat({
+                    lower: lowerBound + i * selectedGranu,
+                    upper: lowerBound + (i + 1) * selectedGranu
+                })
+            }
+            console.log('This is the computed granularity at the end: ', granuLabels)
+            this.setState({
+                granularityLabels: granuLabels,
+            })
+        }
+    }
 
     // visualize the policy graph
     visualizePolicy = () => {
@@ -226,6 +264,7 @@ class PanelComponent extends Component {
     // pass the attribute the visualize into the function
     policyGraph = () => {
         if (this.state.policyVisualization && this.state.attrClicked) {
+            this.computeGranularity();
             if (this.state.selectedType === 'categorical') {
                 // only handle the categorical data now
                 return (
@@ -313,6 +352,7 @@ class PanelComponent extends Component {
 
     // after confirmation, we submit the result to the api
     toggleButtonState = () => {
+        this.computeGranularity();
         console.log(this.state.selectedType)
         let threshold_array = [];
         let sensitiveSet = [];
@@ -357,11 +397,11 @@ class PanelComponent extends Component {
                 if (this.state.queryGranularity === null) {
                     queryGranu = 1;
                 } else {
-                    queryGranu = this.state.queryGranularity
+                    queryGranu = this.state.queryGranularity.value
                 }
                 console.log('This is the current workload: ', this.state.currentWorkload)
                 const data = {
-                    "workload": this.state.currentWorkload,
+                    "workload": this.state.currentWorkload.value,
                     "granularity": queryGranu,
                     "attrName": this.state.selectedAttr,
                     "attrType": this.state.selectedType,
@@ -385,9 +425,12 @@ class PanelComponent extends Component {
                         let epsilons = [];
                         let trueAns = [];
                         let noisyAns = [];
+                        let accuracies = []
                         const res = data.results;
+                        console.log('This is the API response: ', res)
                         for (let i = 0; i < res.length - 1; ++i) {
                             epsilons = epsilons.concat(res[i].eps_max);
+                            accuracies = accuracies.concat(res[i].accuracy)
                             let trueAnsObj = {
                                 'trueRes': res[i].true_answer
                             }
@@ -403,88 +446,12 @@ class PanelComponent extends Component {
                             apiRespond: epsilons,
                             trueRes: trueAns,
                             noisyRes: noisyAns,
+                            queryAccuracy: accuracies,
                             dpPrivacy: res[res.length - 1].eps_max
                         })
                     })
                     .catch((err) => console.log(err))
             }
-            // const data = {
-            //     "workload": ["17<=age and age <18",
-            //         "18<=age and age <19",
-            //         "19<=age and age <20",
-            //         "20<=age and age <21",
-            //         "21<=age and age <22",
-            //         "22<=age and age <23",
-            //         "23<=age and age <24",
-            //         "24<=age and age <25",
-            //         "25<=age and age <26",
-            //         "26<=age and age <27",
-            //         "27<=age and age <28",
-            //         "28<=age and age <29",
-            //         "29<=age and age <30",
-            //         "30<=age and age <31",
-            //         "31<=age and age <32",
-            //         "32<=age and age <33",
-            //         "33<=age and age <34",
-            //         "34<=age and age <35",
-            //         "35<=age and age <36",
-            //         "36<=age and age <37",
-            //         "37<=age and age <38",
-            //         "38<=age and age <39",
-            //         "39<=age and age <40",
-            //         "40<=age and age <41",
-            //         "41<=age and age <42",
-            //         "42<=age and age <43",
-            //         "43<=age and age <44",
-            //         "44<=age and age <45",
-            //         "45<=age and age <46",
-            //         "46<=age and age <47",
-            //         "47<=age and age <48",
-            //         "48<=age and age <49",
-            //         "49<=age and age <50",
-            //         "50<=age and age <51",
-            //         "51<=age and age <52",
-            //         "52<=age and age <53",
-            //         "53<=age and age <54",
-            //         "54<=age and age <55",
-            //         "55<=age and age <56",
-            //         "56<=age and age <57",
-            //         "57<=age and age <58",
-            //         "58<=age and age <59",
-            //         "59<=age and age <60",
-            //         "60<=age and age <61",
-            //         "61<=age and age <62",
-            //         "62<=age and age <63",
-            //         "63<=age and age <64",
-            //         "64<=age and age <65",
-            //         "65<=age and age <66",
-            //         "66<=age and age <67",
-            //         "67<=age and age <68",
-            //         "68<=age and age <69",
-            //         "69<=age and age <70",
-            //         "70<=age and age <71",
-            //         "71<=age and age <72",
-            //         "72<=age and age <73",
-            //         "73<=age and age <74",
-            //         "74<=age and age <75",
-            //         "75<=age and age <76",
-            //         "76<=age and age <77",
-            //         "77<=age and age <78",
-            //         "78<=age and age <79",
-            //         "79<=age and age <80",
-            //         "80<=age and age <81",
-            //         "81<=age and age <82",
-            //         "82<=age and age <83",
-            //         "83<=age and age <84",
-            //         "84<=age and age <85",
-            //         "85<=age and age <86",
-            //         "86<=age and age <87",
-            //         "87<=age and age <88",
-            //         "88<=age and age <89"],
-            //     "attrName": "age",
-            //     "attrType": "Numerical",
-            //     "thresholds": threshold_array
-            // }
         }
     }
 
@@ -680,7 +647,7 @@ class PanelComponent extends Component {
         var CanvasJSChart = CanvasJSReact.CanvasJSChart;
         let privacyPoints = [];
         let dpVal = this.state.dpPrivacy;
-        console.log("this is the dp loss", dpVal);
+        // console.log("this is the dp loss", dpVal);
         let resComplete = null;
         let selectedRes = null;
         for (let i = 0; i < this.state.apiRespond.length; ++i) {
@@ -694,7 +661,7 @@ class PanelComponent extends Component {
 
         const options = {
             height: 330,
-            width: 400,
+            width: 350,
             theme: "light2",
             animationEnabled: true,
             exportEnabled: true,
@@ -775,69 +742,104 @@ class PanelComponent extends Component {
         console.log(e);
         console.log('selected point ', e.dataPoint.x);
         console.log('All possible noisy answers ', this.state.noisyRes)
-        let selectedTrueAns = null;
-        let selectedNoisyAns = null;
+        let selectedTrueAns = [];
+        let selectedNoisyAns = [];
+        let selectedAccuracy = null;
         // question: do we have to compare with differential privacy?
+        // let's visualize the results and compare it with DP
         for (let i = 0; i < this.state.privacyThresholds.length; ++i) {
             if (this.state.privacyThresholds[i] === e.dataPoint.x) {
-                selectedTrueAns = this.state.trueRes[i];
-                selectedNoisyAns = this.state.noisyRes[i];
+                selectedTrueAns = this.state.trueRes[i].trueRes;
+                selectedNoisyAns = this.state.noisyRes[i].noisyAns;
+                selectedAccuracy = this.state.queryAccuracy[i]
                 break;
             }
         }
-        console.log('selected true answers ', selectedTrueAns)
-        console.log('selected noisy answers ', selectedNoisyAns)
+        // console.log('selected true answers ', selectedTrueAns)
+        // console.log('selected noisy answers ', selectedNoisyAns)
         this.setState({
             queryResult: true,
-            res: e
+            selectedTrueAns: selectedTrueAns,
+            selectedNoisyAns: selectedNoisyAns,
+            selectedAccuracy: selectedAccuracy
         })
     }
 
-    displayRes = () => {
-        // var CanvasJS = CanvasJSReact.CanvasJS;
-        var CanvasJSChart = CanvasJSReact.CanvasJSChart;
-        const options = {
-            height: 330,
-            width: 400,
-            animationEnabled: true,
-            exportEnabled: true,
-            theme: "light2", //"light1", "dark1", "dark2"
-            title: {
-                text: "Noisy Answer",
-                fontFamily: "cursive",
-                fontSize: 22
-            },
-            axisX: {
-                labelAngle: 50
-            },
-            axisY: {
-                includeZero: true
-            },
-            data: [{
-                type: "column", //change type to bar, line, area, pie, etc
-                //indexLabel: "{y}", //Shows y value on all Data Points
-                indexLabelFontColor: "#5A5757",
-                indexLabelPlacement: "outside",
-                color: "#6D78AD",
-                dataPoints: [
-                    { x: 10, y: 71, label: 'abc' },
-                    { x: 20, y: 55, label: 'abc' },
-                    { x: 30, y: 50, label: 'abc' },
-                    { x: 40, y: 65, label: 'abc' },
-                    { x: 50, y: 71, label: 'abc' },
-                    { x: 60, y: 68, label: 'abc' },
-                    { x: 70, y: 38, label: 'abc' },
-                    { x: 80, y: 92, label: 'abc' },
-                    { x: 90, y: 54, label: 'abc' },
-                    { x: 100, y: 60, label: 'abc' },
-                    { x: 110, y: 21, label: 'abc' },
-                    { x: 120, y: 49, label: 'abc' },
-                    { x: 130, y: 36, label: 'abc' }
-                ]
-            }]
-        }
-
+    displayResNoisy = () => {
+        // console.log('Display Query results here: ', this.state.queryResult)
+        console.log('Granularity labels: ', this.state.granularityLabels)
         if (this.state.queryResult) {
+            // var CanvasJS = CanvasJSReact.CanvasJS;
+            var CanvasJSChart = CanvasJSReact.CanvasJSChart;
+            let noisyAnsPoints = [];
+            const noisyAnswers = this.state.selectedNoisyAns;
+            const numPredicates = noisyAnswers.length;
+            // console.log("Selected Noisy Answer: ", noisyAnswers[0])
+            for (let i = 0; i < numPredicates; ++i) {
+                let y = 0;
+                if (noisyAnswers[i] >= 0) {
+                    y = noisyAnswers[i]
+                }
+                if (i === 0) {
+                    noisyAnsPoints = noisyAnsPoints.concat(
+                        {
+                            x: this.state.granularityLabels[i].lower,
+                            label: this.state.selectedAttr + "<" + this.state.granularityLabels[i].upper.toString(),
+                            y: y
+                        }
+                    )
+                } else if (i === numPredicates - 1) {
+                    noisyAnsPoints = noisyAnsPoints.concat(
+                        {
+                            x: this.state.granularityLabels[i].lower,
+                            label: this.state.granularityLabels[i].lower.toString() + "<=" + this.state.selectedAttr,
+                            y: y
+                        }
+                    )
+                } else {
+                    noisyAnsPoints = noisyAnsPoints.concat(
+                        {
+                            x: this.state.granularityLabels[i].lower,
+                            label: this.state.granularityLabels[i].lower.toString() + "<=" + this.state.selectedAttr + "<" + this.state.granularityLabels[i].upper.toString(),
+                            y: y
+                        }
+                    )
+                }
+            }
+            const options = {
+                height: 330,
+                width: 350,
+                animationEnabled: true,
+                exportEnabled: true,
+                theme: "light2", //"light1", "dark1", "dark2"
+                title: {
+                    text: 'Query Noisy Counts(Blowfish)',
+                    fontFamily: "cursive",
+                    fontSize: 18
+                },
+                axisX: {
+                    labelAngle: 50
+                },
+                axisY: {
+                    includeZero: true
+                },
+                toolTip: {
+                    shared: true
+                },
+                legend: {
+                    cursor: "pointer",
+                    itemclick: this.toggleDataSeries
+                },
+                data: [{
+                    type: "column", //change type to bar, line, area, pie, etc
+                    //indexLabel: "{y}", //Shows y value on all Data Points
+                    indexLabelFontColor: "#5A5757",
+                    indexLabelPlacement: "outside",
+                    color: "#6D78AD",
+                    dataPoints: noisyAnsPoints
+                }]
+            }
+
             return (
                 <div>
                     <CanvasJSChart options={options}
@@ -849,6 +851,100 @@ class PanelComponent extends Component {
         } else {
             return (
                 null
+            )
+        }
+    }
+
+    displayResTrue = () => {
+        // console.log('Display Query results here: ', this.state.queryResult)
+        if (this.state.queryResult) {
+            // var CanvasJS = CanvasJSReact.CanvasJS;
+            var CanvasJSChart = CanvasJSReact.CanvasJSChart;
+            let trueAnsPoints = [];
+            const trueAnswers = this.state.selectedTrueAns;
+            const numPredicates = trueAnswers.length;
+            for (let i = 0; i < numPredicates; ++i) {
+                if (i === 0) {
+                    trueAnsPoints = trueAnsPoints.concat(
+                        {
+                            x: this.state.granularityLabels[i].lower,
+                            label: this.state.selectedAttr + "<" + this.state.granularityLabels[i].upper.toString(),
+                            y: trueAnswers[i]
+                        }
+                    )
+                } else if (i === numPredicates - 1) {
+                    trueAnsPoints = trueAnsPoints.concat(
+                        {
+                            x: this.state.granularityLabels[i].lower,
+                            label: this.state.granularityLabels[i].lower.toString() + "<=" + this.state.selectedAttr,
+                            y: trueAnswers[i]
+                        }
+                    )
+                } else {
+                    trueAnsPoints = trueAnsPoints.concat(
+                        {
+                            x: this.state.granularityLabels[i].lower,
+                            label: this.state.granularityLabels[i].lower.toString() + "<=" + this.state.selectedAttr + "<" + this.state.granularityLabels[i].upper.toString(),
+                            y: trueAnswers[i]
+                        }
+                    )
+                }
+            }
+            const options = {
+                height: 330,
+                width: 350,
+                animationEnabled: true,
+                exportEnabled: true,
+                theme: "light2", //"light1", "dark1", "dark2"
+                title: {
+                    text: 'Query True Counts(Blowfish)',
+                    fontFamily: "cursive",
+                    fontSize: 18
+                },
+                axisX: {
+                    labelAngle: 50
+                },
+                axisY: {
+                    includeZero: true
+                },
+                toolTip: {
+                    shared: true
+                },
+                legend: {
+                    cursor: "pointer",
+                    itemclick: this.toggleDataSeries
+                },
+                data: [{
+                    type: "column", //change type to bar, line, area, pie, etc
+                    //indexLabel: "{y}", //Shows y value on all Data Points
+                    indexLabelFontColor: "#5A5757",
+                    indexLabelPlacement: "outside",
+                    color: "#6D78AD",
+                    dataPoints: trueAnsPoints
+                }]
+            }
+
+            return (
+                <div>
+                    <CanvasJSChart options={options}
+                    /* onRef={ref => this.chart = ref} */
+                    />
+                    {/*You can get reference to the chart instance as shown above using onRef. This allows you to access all chart properties and methods*/}
+                </div>
+            )
+        } else {
+            return (
+                null
+            )
+        }
+    }
+
+    displayStats = () => {
+        if (this.state.queryResult) {
+            return (
+                <Grid.Row className='attr'>
+                    Query Accuracy: {this.state.selectedAccuracy}
+                </Grid.Row>
             )
         }
     }
@@ -883,10 +979,14 @@ class PanelComponent extends Component {
                         </Grid>
                     </Grid.Column>
                     <Divider vertical style={{ left: 535, height: 360 }}></Divider>
-                    <Grid.Column style={{ width: 540 }}>
+                    <Grid.Column style={{ width: 500 }}>
                         <Grid rows={2}>
                             <Grid.Row className='chartContainer'>
-                                {this.privacyPanelTheshold()}
+                                <Grid columns={1}>
+                                    <Grid.Column style={{ width: 400 }}>
+                                        {this.privacyPanelTheshold()}
+                                    </Grid.Column>
+                                </Grid>
                             </Grid.Row>
                             <Divider fitted />
                             <Grid.Row>
@@ -894,14 +994,22 @@ class PanelComponent extends Component {
                             </Grid.Row>
                         </Grid>
                     </Grid.Column>
-                    <Divider vertical style={{ left: 1075, height: 360 }}></Divider>
-                    <Grid.Column style={{ width: 810 }}>
+                    <Divider vertical style={{ left: 1035, height: 360 }}></Divider>
+                    <Grid.Column style={{ width: 850 }}>
                         <Grid rows={2}>
                             <Grid.Row className='chartContainer'>
-                                {this.displayRes()}
+                                <Grid columns={2}>
+                                    <Grid.Column style={{ width: 375 }}>
+                                        {this.displayResNoisy()}
+                                    </Grid.Column>
+                                    <Grid.Column style={{ width: 375 }}>
+                                        {this.displayResTrue()}
+                                    </Grid.Column>
+                                </Grid>
                             </Grid.Row>
                             <Divider fitted />
                             <Grid.Row style={{ margin: '3em', height: 290 }}>
+                                {this.displayStats()}
                             </Grid.Row>
                         </Grid>
                     </Grid.Column>

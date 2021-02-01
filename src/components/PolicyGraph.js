@@ -29,7 +29,7 @@ class PolicyGraph extends Component {
     render() {
         let x1 = 30;
         let y1 = 30;
-        let w = 480;
+        let w = 450;
         let h = 280;
         let nodesEdges = []
         // this is the case when we are dealing with categorical data
@@ -39,7 +39,7 @@ class PolicyGraph extends Component {
                 // console.log(this.props.attributeDomain[i])
                 let curNode = {
                     data: { id: this.props.attributeDomain[i].value, label: this.props.attributeDomain[i].label },
-                    position: { x: 290, y: 50 },
+                    position: { x: 240, y: 50 },
                     style: {
                         'background-color': '#d4d4d4',
                         "text-valign": "center",

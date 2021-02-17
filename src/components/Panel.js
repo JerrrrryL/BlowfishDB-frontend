@@ -5,6 +5,10 @@ import Select from 'react-select'
 import makeAnimated from 'react-select/animated';
 import PolicyGraph from './PolicyGraph'
 import SchemaComponent from './Schema'
+import { Tab, Tabs, TabList, TabPanel } from 'react-tabs';
+import 'react-tabs/style/react-tabs.css';
+
+const url = '/'
 
 const workloadOptions = [
     { value: '1D-Histogram', label: '1D-Histogram' },
@@ -19,9 +23,17 @@ const alphaOptions = [
 ]
 
 const betaOptions = [
-    { value: 100, label: '100' },
+    { value: 0.005, label: '0.005' },
     // { value: 10, label: '10' },
     // { value: 1, label: '1' }
+]
+
+const epsilonOptions = [
+    { value: 0.001, label: '0.001' },
+    { value: 0.01, label: '0.01' },
+    { value: 0.1, label: '0.1' },
+    { value: 1, label: '1' },
+    { value: 5, label: '5' },
 ]
 
 // The bottom left panel for user input
@@ -50,7 +62,7 @@ class PanelComponent extends Component {
                 { attrName: 'salary', attrType: 'categorical' }
             ],
             databaseDomain: [
-                { attrName: 'age', domain: [17, 90] },
+                { attrName: 'age', domain: [0, 100] },
                 {
                     attrName: 'workclass',
                     domain: ['?', 'Federal-gov', 'Local-gov', 'Never-worked', 'Private',
@@ -58,7 +70,7 @@ class PanelComponent extends Component {
                 },
                 {
                     attrName: 'fnlwgt',
-                    domain: [12285, 1490400]
+                    domain: [0, 1490400]
                 },
                 {
                     attrName: 'education',
@@ -66,7 +78,7 @@ class PanelComponent extends Component {
                         'HS-grad', 'Prof-school', 'Assoc-acdm', 'Assoc-voc', '9th', '7th-8th',
                         '12th', 'Masters', '1st-4th', '10th', 'Doctorate', '5th-6th', 'Preschool']
                 },
-                { attrName: 'edunum', domain: [1, 16] },
+                { attrName: 'edunum', domain: [0, 20] },
                 {
                     attrName: 'marital',
                     domain: ['Married-civ-spouse', 'Divorced', 'Never-married',
@@ -92,15 +104,15 @@ class PanelComponent extends Component {
                 },
                 {
                     attrName: 'capgain',
-                    domain: [0, 99999]
+                    domain: [0, 100000]
                 },
                 {
                     attrName: 'caploss',
-                    domain: [0, 4356]
+                    domain: [0, 5000]
                 },
                 {
                     attrName: 'hourweek',
-                    domain: [0, 99]
+                    domain: [0, 100]
                 },
                 {
                     attrName: 'country',
@@ -120,7 +132,6 @@ class PanelComponent extends Component {
             selectedAttr: null,
             selectedType: null,
             totalPolicy: [], // the policy for all attributes, user select from default policy or specify own
-            currentPolicy: null, // temp variable for current attribute
             alpha: null, // alpha and beta for APEx
             beta: null,
             defaultPolicy: null, // {'attrName': '', 'policy': []} used for dropdown menu for users to select
@@ -133,21 +144,31 @@ class PanelComponent extends Component {
             visualNumPolicy: null, // threshold for the user to visualize policy
             apiLoading: true,
             apiRespond: [],  // the epsilon values
-            noisyRes: [],  // the noisy answers
+            policyNoisyRes: [],  // the noisy answers with Threshold (Blowfish)
+            noisyRes: [],  // the noisy answers with DP
             trueRes: [],  // the true answers
             privacyThresholds: [], // the x values for privacy analysis
             dpPrivacy: null,  // the privacy loss for differential privacy
-            queryResult: false,  // if this is true, we will visualize the query results
+            trueResult: false,  // if this is true, we have the true query results ready
+            noisyResult: false,  // if this is true, we have the noisy query results ready (DP)
+            policyResult: false,  // if this is true, we have the noisy query results ready (Blowfish)
             queryGranularity: null,  // the granularity of the current query
             granularityLabels: null,  // the granularity labels for the granularity specified above
-            selectedTrueAns: [],  // the true counts of selected query
-            selectedNoisyAns: [],  // the noisy counts of selected query
             queryAccuracy: [],  // the accuracy of the queries
             selectedAccuracy: null,  // the accuracy of the selected queries
+            targetEpsilon: null,  // target epsilon for accuracy v.s. threshold panel
+            displayAccuracyComparison: false,  // if this is true, we display the comparison between blowfish and DP
+            selectedAccuracies: [],  // the accuracies for epsilons
+            selectedDPAccuracies: [],  // the dp accuracies for epsilons
+            epsilonArr: [],  // available epsilons 
         }
 
         this.getButtonsUsingMap = this.getButtonsUsingMap.bind(this);
-        this.queryComplete = this.queryComplete.bind(this);
+        this.thresholdSelected = this.thresholdSelected.bind(this);
+        this.asyncResFunction = this.asyncResFunction.bind(this);
+        this.asyncNoisyFunction = this.asyncNoisyFunction.bind(this);
+        this.asyncPolicyFunction = this.asyncPolicyFunction.bind(this);
+        this.asyncComparisonFunction = this.asyncComparisonFunction.bind(this);
     }
 
     // attribute selection on click
@@ -160,13 +181,19 @@ class PanelComponent extends Component {
             currentCatPolicy: null,
             visualNumPolicy: null,
             currentNumPolicy: null,
-            queryResult: false,
             attrPolicy: false,
             currentWorkload: null,
             queryGranularity: null,
             granularityLabels: null,
             queryAccuracy: [],
             selectedAccuracy: null,
+            trueResult: false,
+            noisyResult: false,
+            policyResult: false,
+            displayAccuracyComparison: false,
+            selectedAccuracies: [],
+            selectedDPAccuracies: [],
+            epsilonArr: [],
         });
         console.log(this.state.defaultPolicy)
         let delPolicy = null;
@@ -222,39 +249,9 @@ class PanelComponent extends Component {
         });
     };
 
-    // compute the granularity of the query
-    // store this in the state since both the query results, and the policy graph visualization needs this
-    // to avoid recomputing, only call this when the variable in the state is null 
-    // call this function when either Confirm/Visualization is pressed
-    computeGranularity = () => {
-        console.log('Enter compute Granularity')
-        if (this.state.granularityLabels === null) {
-            let selectedGranu = this.state.queryGranularity;
-            // sanity check, assign defaut to be 1 if null
-            if (selectedGranu === null) {
-                selectedGranu = 1
-            } else {
-                selectedGranu = selectedGranu.value
-            }
-            let lowerBound = this.state.currentNumericalDomain.domain[0];
-            let upperBound = this.state.currentNumericalDomain.domain[1];
-            let granuLabels = [];
-            let numEle = Math.ceil((upperBound - lowerBound + 1) / selectedGranu)
-            for (let i = 0; i < numEle; ++i) {
-                granuLabels = granuLabels.concat({
-                    lower: lowerBound + i * selectedGranu,
-                    upper: lowerBound + (i + 1) * selectedGranu
-                })
-            }
-            console.log('This is the computed granularity at the end: ', granuLabels)
-            this.setState({
-                granularityLabels: granuLabels,
-            })
-        }
-    }
-
     // visualize the policy graph
     visualizePolicy = () => {
+        console.log('------------------------This is here-----------------------')
         this.setState({
             policyVisualization: true
         })
@@ -264,7 +261,7 @@ class PanelComponent extends Component {
     // pass the attribute the visualize into the function
     policyGraph = () => {
         if (this.state.policyVisualization && this.state.attrClicked) {
-            this.computeGranularity();
+            // this.computeGranularity(this.state.queryGranularity);
             if (this.state.selectedType === 'categorical') {
                 // only handle the categorical data now
                 return (
@@ -282,6 +279,7 @@ class PanelComponent extends Component {
                         attrType={this.state.selectedType}
                         attributeDomain={this.state.currentNumericalDomain}
                         attrThreshold={this.state.visualNumPolicy}
+                        granularity={this.state.queryGranularity}
                     />
                 )
             }
@@ -295,18 +293,20 @@ class PanelComponent extends Component {
         const animatedComponents = makeAnimated();
         // console.log(this.state.defaultPolicy)
         return (
-            <Select
-                placeholder='Thresholds'
-                components={animatedComponents}
-                isMulti
-                className='inputEle'
-                options={this.state.defaultPolicy}
-                value={this.state.currentNumPolicy}
-                onChange={(event) => {
-                    this.setState({
-                        currentNumPolicy: event // this is an array of attributes
-                    })
-                }} />
+            <Grid.Row> Select threshold to compare accuracy with Differential Privacy
+                <Select
+                    placeholder='Thresholds'
+                    components={animatedComponents}
+                    isMulti
+                    className='inputEle'
+                    options={this.state.defaultPolicy}
+                    value={this.state.currentNumPolicy}
+                    onChange={(event) => {
+                        this.setState({
+                            currentNumPolicy: event // this is an array of attributes
+                        })
+                    }} />
+            </Grid.Row>
         )
     }
 
@@ -315,17 +315,25 @@ class PanelComponent extends Component {
         const animatedComponents = makeAnimated();
         // console.log(this.state.defaultPolicy)
         return (
-            <Select
-                placeholder='Threshold'
-                components={animatedComponents}
-                className='inputEle'
-                options={this.state.defaultPolicy}
-                value={this.state.visualNumPolicy}
-                onChange={(event) => {
-                    this.setState({
-                        visualNumPolicy: event // this is an array of attributes
-                    })
-                }} />
+            <Grid rows={2}>
+                <Grid.Row className="blowfishCountLabel">Display Query Result wrt specified Blowfish Privacy</Grid.Row>
+                <Grid.Row className="blowfishThreshold">
+                    <Grid columns={2}>
+                        <Grid.Column className='policyThresholdLabel'>
+                            Policy Threshold:
+                        </Grid.Column>
+                        <Grid.Column>
+                            <Select
+                                placeholder='Threshold'
+                                components={animatedComponents}
+                                className='inputEleShort'
+                                options={this.state.defaultPolicy}
+                                value={this.state.visualNumPolicy}
+                                onChange={this.handleChangeThreshold} />
+                        </Grid.Column>
+                    </Grid>
+                </Grid.Row>
+            </Grid>
         )
     }
 
@@ -350,9 +358,119 @@ class PanelComponent extends Component {
         )
     }
 
+    // get the true answer for queries, only the attribute name and granularity are needed
+    getQueryTrueAnswer(granu, callback) {
+        if (this.state.selectedType === 'numerical') {
+            let workload = null;
+            if (this.state.currentWorkload === null) {
+                workload = '1D-Histogram'
+            } else { workload = this.state.currentWorkload.value }
+            const data = {
+                "granularity": granu,
+                "lower": this.state.currentNumericalDomain.domain[0],
+                "upper": this.state.currentNumericalDomain.domain[1],
+                "alpha": this.state.alpha,
+                "beta": this.state.beta,
+                "workload": workload,
+                "attrName": this.state.selectedAttr,
+                "attrType": this.state.selectedType,
+            }
+            // console.log("This is the API request Data", data)
+            const headers = new Headers();
+            headers.append('Content-Type', 'application/json')
+
+            const requestOption = {
+                method: 'POST',
+                headers,
+                body: JSON.stringify(data)
+            }
+            const request = new Request(url, requestOption)
+            fetch(request).then((response) => response.json())
+                .then((data) => {
+                    const res = data.results;
+                    // console.log('This is the API response: ', res)
+                    this.setState({
+                        trueRes: res,
+                    })
+                    callback();
+                })
+                .catch((err) => console.log(err))
+        }
+    }
+
+    getQueryNoisyAnswer(granu, epsilon, alpha, beta, threshold, callback) {
+        console.log('This is the threshold:', epsilon)
+        if (this.state.selectedType === 'numerical') {
+            let workload = null;
+            const isArray = Array.isArray(epsilon);
+            console.log('This is the data type: ', isArray);
+            if (this.state.currentWorkload === null) {
+                workload = '1D-Histogram';
+            } else { workload = this.state.currentWorkload.value }
+            const data = {
+                "granularity": granu,
+                "workload": workload,
+                "lower": this.state.currentNumericalDomain.domain[0],
+                "upper": this.state.currentNumericalDomain.domain[1],
+                "attrName": this.state.selectedAttr,
+                "attrType": this.state.selectedType,
+                "target_epsilon": epsilon,
+                "target_dp": threshold,
+                "alpha": alpha,
+                "beta": beta,
+            }
+
+
+            const headers = new Headers();
+            headers.append('Content-Type', 'application/json')
+
+            const requestOption = {
+                method: 'POST',
+                headers,
+                body: JSON.stringify(data)
+            }
+            const request = new Request(url, requestOption)
+            fetch(request).then((response) => response.json())
+                .then((data) => {
+                    const res = data.results;
+                    console.log('This is the API response: ', res)
+                    if (isArray) {
+                        let accuracies = [];
+                        let dpaccuracies = [];
+                        // When the epsilon value is an array
+                        for (let i = 0; i < res.length; ++i) {
+                            accuracies = accuracies.concat(res[i].accuracy);
+                            ++i;
+                            dpaccuracies = dpaccuracies.concat(res[i].accuracy);
+                        }
+                        console.log("This is the accuracy:", accuracies);
+                        console.log("This is DP accuracy", dpaccuracies);
+                        this.setState({
+                            selectedAccuracies: accuracies,
+                            selectedDPAccuracies: dpaccuracies,
+                        })
+                    } else {
+                        // When we only give a single epsilon value
+                        // or a single pair of alpha and beta
+                        if (threshold === Number.MAX_SAFE_INTEGER) {
+                            this.setState({
+                                noisyRes: res,
+                            })
+                        } else {
+                            this.setState({
+                                policyNoisyRes: res,
+                            })
+                        }
+                    }
+                    callback();
+                })
+                .catch((err) => console.log(err))
+        }
+    }
+
     // after confirmation, we submit the result to the api
     toggleButtonState = () => {
-        this.computeGranularity();
+        // this.computeGranularity(this.state.queryGranularity);
         console.log(this.state.selectedType)
         let threshold_array = [];
         let sensitiveSet = [];
@@ -378,85 +496,104 @@ class PanelComponent extends Component {
             privacyThresholds: threshold_array
         })
         console.log('Current threshold array: ', threshold_array)
-        if (threshold_array.length === 0 || this.state.currentWorkload === null) {
-            if (threshold_array.length === 0) {
-                alert("Please specify thresholds/sensitivity sets")
+        threshold_array = threshold_array.concat(Number.MAX_SAFE_INTEGER);
+
+        if (this.state.selectedType === 'numerical') {
+            let queryGranu = null;
+            let workload = null;
+            let epsilon = null;
+            if (this.state.queryGranularity === null) {
+                queryGranu = 1;
             } else {
-                alert("Please choose the workload type")
+                queryGranu = this.state.queryGranularity.value
             }
-        } else {
-            // add a huge threshold to derive result for differential privacy
-            threshold_array = threshold_array.concat(Number.MAX_SAFE_INTEGER);
-            const url = '/'
-            // workload is hardcoded here, needs to be dynamically defined
-            // in the backend, we need the granularity, the workload will be dynamic according to the granularity
-            // we only need to try different thresholds
+            if (this.state.currentWorkload === null) {
+                workload = '1D-Histogram'
+            } else { workload = this.state.currentWorkload.value }
+            if (this.state.targetEpsilon !== null) {
+                epsilon = this.state.targetEpsilon.value;
+            }
+            // console.log('This is the current workload: ', this.state.currentWorkload)
+            const data = {
+                "workload": workload,
+                "granularity": queryGranu,
+                "alpha": this.state.alpha,
+                "beta": this.state.beta,
+                "lower": this.state.currentNumericalDomain.domain[0],
+                "upper": this.state.currentNumericalDomain.domain[1],
+                "target_epsilon": epsilon,
+                "attrName": this.state.selectedAttr,
+                "attrType": this.state.selectedType,
+                "thresholds": threshold_array,
+            }
 
-            if (this.state.selectedType === 'numerical') {
-                let queryGranu = null;
-                if (this.state.queryGranularity === null) {
-                    queryGranu = 1;
-                } else {
-                    queryGranu = this.state.queryGranularity.value
-                }
-                console.log('This is the current workload: ', this.state.currentWorkload)
-                const data = {
-                    "workload": this.state.currentWorkload.value,
-                    "granularity": queryGranu,
-                    "attrName": this.state.selectedAttr,
-                    "attrType": this.state.selectedType,
-                    "thresholds": threshold_array
-                }
+            // TODO: need alerts to make sure the granularity and the attrNa
+            // console.log("This is the API request Data", data)
+            const headers = new Headers();
+            headers.append('Content-Type', 'application/json')
 
-                // TODO: need alerts to make sure the granularity and the attrNa
-                console.log("This is the API request Data", data)
-                const headers = new Headers();
-                headers.append('Content-Type', 'application/json')
-
-                const requestOption = {
-                    method: 'POST',
-                    headers,
-                    body: JSON.stringify(data)
-                }
-                const request = new Request(url, requestOption)
-                fetch(request).then((response) => response.json())
-                    .then((data) => {
-                        // after fetching api response, plot the privacy loss graph here
-                        let epsilons = [];
-                        let trueAns = [];
-                        let noisyAns = [];
-                        let accuracies = []
-                        const res = data.results;
-                        console.log('This is the API response: ', res)
-                        for (let i = 0; i < res.length - 1; ++i) {
-                            epsilons = epsilons.concat(res[i].eps_max);
-                            accuracies = accuracies.concat(res[i].accuracy)
-                            let trueAnsObj = {
-                                'trueRes': res[i].true_answer
-                            }
-                            let noisyAnsObj = {
-                                'noisyAns': res[i].noisy_answer
-                            }
-                            trueAns = trueAns.concat(trueAnsObj);
-                            noisyAns = noisyAns.concat(noisyAnsObj);
-                        }
-                        // get the epsilons and true answers
-                        this.setState({
-                            attrPolicy: true,
-                            apiRespond: epsilons,
-                            trueRes: trueAns,
-                            noisyRes: noisyAns,
-                            queryAccuracy: accuracies,
-                            dpPrivacy: res[res.length - 1].eps_max
-                        })
+            const requestOption = {
+                method: 'POST',
+                headers,
+                body: JSON.stringify(data)
+            }
+            const request = new Request(url, requestOption)
+            fetch(request).then((response) => response.json())
+                .then((data) => {
+                    // after fetching api response, plot the privacy loss graph here
+                    let accuracies = []
+                    const res = data.results;
+                    // console.log('This is the API response: ', res)
+                    for (let i = 0; i < res.length; ++i) {
+                        accuracies = accuracies.concat(res[i].accuracy)
+                    }
+                    this.setState({
+                        attrPolicy: true,
+                        queryAccuracy: accuracies,
                     })
-                    .catch((err) => console.log(err))
-            }
+                })
+                .catch((err) => console.log(err))
         }
     }
 
+    handleChangeAlpha = value => {
+        this.setState({
+            alpha: value
+        },
+            () => {
+                if (this.state.beta !== null) {
+                    this.getQueryNoisyAnswer(
+                        this.state.queryGranularity.value,
+                        null,
+                        this.state.alpha,
+                        this.state.beta,
+                        Number.MAX_SAFE_INTEGER,
+                        this.asyncNoisyFunction,
+                    );
+                }
+            }
+        )
+    };
 
-    // The following 3 functions to handle selection in the interface
+    handleChangeBeta = value => {
+        this.setState({
+            beta: value
+        },
+            () => {
+                if (this.state.alpha !== null) {
+                    this.getQueryNoisyAnswer(
+                        this.state.queryGranularity.value,
+                        null,
+                        this.state.alpha,
+                        this.state.beta,
+                        Number.MAX_SAFE_INTEGER,
+                        this.asyncNoisyFunction,
+                    );
+                }
+            }
+        )
+    };
+
     handleChangeWorkload = value => {
         this.setState({
             workloadSelected: true,
@@ -464,94 +601,600 @@ class PanelComponent extends Component {
         })
     };
 
-    handleChangeAlpha = value => {
+    asyncResFunction() {
+        // console.log('This is the true counts:', this.state.trueRes)
         this.setState({
-            alpha: value
+            trueResult: true,
         })
-    };
+    }
 
-    handleChangeBeta = value => {
+    asyncNoisyFunction() {
+        // console.log('This is the noisy counts:', this.state.noisyRes)
         this.setState({
-            beta: value
+            noisyResult: true,
         })
-    };
+    }
+
+    // for policy graph
+    asyncPolicyFunction() {
+        this.setState({
+            policyResult: true,
+        })
+    }
+
+    computeGranularity = (queryGranularity, lowerBound, upperBound) => {
+        // console.log('Parameters:', queryGranularity, lowerBound, upperBound)
+        let selectedGranu = queryGranularity;
+        // sanity check, assign defaut to be 1 if null
+        if (selectedGranu === null) {
+            selectedGranu = 1
+        }
+        let granuLabels = [];
+        let numEle = Math.ceil((upperBound - lowerBound + 1) / selectedGranu)
+        for (let i = 0; i < numEle; ++i) {
+            granuLabels = granuLabels.concat({
+                lower: lowerBound + i * selectedGranu,
+                upper: lowerBound + (i + 1) * selectedGranu
+            })
+        }
+        // console.log('This is the computed granularity at the end: ', granuLabels)
+        return granuLabels;
+    }
+
+    plotTrueCounts = () => {
+        var CanvasJSChart = CanvasJSReact.CanvasJSChart;
+        let trueAnsPoints = [];
+        const granularity = this.state.queryGranularity.value;
+        const lower = this.state.currentNumericalDomain.domain[0];
+        const upper = this.state.currentNumericalDomain.domain[1];
+        const trueCounts = this.state.trueRes;
+        const attrName = this.state.selectedAttr;
+        const granularityLabels = this.computeGranularity(granularity, lower, upper);
+        // console.log('the granularity labels are:', granularityLabels)
+        const numPredicates = trueCounts.length;
+        for (let i = 0; i < numPredicates; ++i) {
+            const x = (granularityLabels[i].lower + granularityLabels[i].upper) / 2;
+            if (i === 0) {
+                trueAnsPoints = trueAnsPoints.concat(
+                    {
+                        x: x,
+                        label: attrName + "<" + granularityLabels[i].upper.toString(),
+                        y: trueCounts[i]
+                    }
+                )
+            } else if (i === numPredicates - 1) {
+                trueAnsPoints = trueAnsPoints.concat(
+                    {
+                        x: x,
+                        label: granularityLabels[i].lower.toString() + "<=" + attrName,
+                        y: trueCounts[i]
+                    }
+                )
+            } else {
+                trueAnsPoints = trueAnsPoints.concat(
+                    {
+                        x: x,
+                        label: granularityLabels[i].lower.toString() + "<=" + attrName + "<" + granularityLabels[i].upper.toString(),
+                        y: trueCounts[i]
+                    }
+                )
+            }
+        }
+        const options = {
+            height: 250,
+            width: 275,
+            animationEnabled: true,
+            exportEnabled: true,
+            theme: "light2", //"light1", "dark1", "dark2"
+            title: {
+                text: 'True Counts',
+                fontSize: 16
+            },
+            axisX: {
+                labelAngle: 50,
+                minimum: lower,
+                maximum: upper
+            },
+            axisY: {
+                includeZero: true
+            },
+            toolTip: {
+                shared: true
+            },
+            legend: {
+                cursor: "pointer",
+                itemclick: this.toggleDataSeries
+            },
+            data: [{
+                type: "column", //change type to bar, line, area, pie, etc
+                //indexLabel: "{y}", //Shows y value on all Data Points
+                indexLabelFontColor: "#5A5757",
+                indexLabelPlacement: "outside",
+                color: "#6D78AD",
+                dataPoints: trueAnsPoints
+            }]
+        }
+
+        return (
+            <div>
+                <CanvasJSChart options={options}
+                /* onRef={ref => this.chart = ref} */
+                />
+                {/*You can get reference to the chart instance as shown above using onRef. This allows you to access all chart properties and methods*/}
+            </div>
+        )
+    }
+
+    // currently they are separated, then we
+    plotNoisyCounts = (noisyCounts) => {
+        var CanvasJSChart = CanvasJSReact.CanvasJSChart;
+        let noisyAnsPoints = [];
+        const granularity = this.state.queryGranularity.value;
+        const lower = this.state.currentNumericalDomain.domain[0];
+        const upper = this.state.currentNumericalDomain.domain[1];
+        // let noisyCounts = this.state.noisyRes;
+        const attrName = this.state.selectedAttr;
+        const granularityLabels = this.computeGranularity(granularity, lower, upper);
+        const numPredicates = noisyCounts.length;
+        // console.log('This is the granularity labels:', granularityLabels)
+        // console.log('This is the granularity labels length:', this.state.noisyRes)
+        if (numPredicates === granularityLabels.length) {
+            for (let i = 0; i < numPredicates; ++i) {
+                let y = 0;
+                const x = (granularityLabels[i].lower + granularityLabels[i].upper) / 2
+                if (noisyCounts[i] >= 0) {
+                    y = noisyCounts[i];
+                }
+                if (i === 0) {
+                    noisyAnsPoints = noisyAnsPoints.concat(
+                        {
+                            x: x,
+                            label: attrName + "<" + granularityLabels[i].upper.toString(),
+                            y: y
+                        }
+                    )
+                } else if (i === numPredicates - 1) {
+                    noisyAnsPoints = noisyAnsPoints.concat(
+                        {
+                            x: x,
+                            label: granularityLabels[i].lower.toString() + "<=" + attrName,
+                            y: y
+                        }
+                    )
+                } else {
+                    noisyAnsPoints = noisyAnsPoints.concat(
+                        {
+                            x: x,
+                            label: granularityLabels[i].lower.toString() + "<=" + attrName + "<" + granularityLabels[i].upper.toString(),
+                            y: y
+                        }
+                    )
+                }
+            }
+        }
+        const options = {
+            height: 250,
+            width: 275,
+            animationEnabled: true,
+            exportEnabled: true,
+            theme: "light2", //"light1", "dark1", "dark2"
+            title: {
+                text: 'Noisy Counts',
+                fontSize: 16
+            },
+            axisX: {
+                labelAngle: 50,
+                minimum: lower,
+                maximum: upper
+            },
+            axisY: {
+                includeZero: true
+            },
+            toolTip: {
+                shared: true
+            },
+            legend: {
+                cursor: "pointer",
+                itemclick: this.toggleDataSeries
+            },
+            data: [{
+                type: "column", //change type to bar, line, area, pie, etc
+                //indexLabel: "{y}", //Shows y value on all Data Points
+                indexLabelFontColor: "#5A5757",
+                indexLabelPlacement: "outside",
+                color: "#6D78AD",
+                dataPoints: noisyAnsPoints
+            }]
+        }
+
+        return (
+            <div>
+                <CanvasJSChart options={options}
+                /* onRef={ref => this.chart = ref} */
+                />
+                {/*You can get reference to the chart instance as shown above using onRef. This allows you to access all chart properties and methods*/}
+            </div>
+        )
+    }
+
+    displayTrueCounts = () => {
+        if (this.state.trueResult) {
+            return (
+                this.plotTrueCounts()
+            )
+        } else {
+            return null;
+        }
+    }
+
+    // display the noisy results after target epsilon is selected (DP)
+    displayNoisyCounts = () => {
+        if (this.state.noisyResult) {
+            return (
+                this.plotNoisyCounts(this.state.noisyRes)
+            )
+        } else {
+            return null;
+        }
+    }
+
+    // display the noisy results under target epsilon and 
+    displayPolicyNoisyCounts = () => {
+        if (this.state.policyResult) {
+            return (
+                this.plotNoisyCounts(this.state.policyNoisyRes)
+            )
+        } else {
+            return null;
+        }
+    }
 
     handleChangeGranularity = value => {
         this.setState({
             queryGranularity: value
         })
+        if (this.state.trueResult) {
+            this.setState({
+                trueResult: false,  // make sure we can switch granularity
+            })
+        }
+        // console.log('This is the query granularity: ', value.value)
+        this.getQueryTrueAnswer(value.value, this.asyncResFunction)
+        if (this.state.noisyResult) {
+            this.setState({
+                noisyResult: false,  // make sure we are able to switch target epsilon
+            })
+            this.getQueryNoisyAnswer(value.value,
+                this.state.targetEpsilon.value,
+                null,
+                null,
+                Number.MAX_SAFE_INTEGER,
+                this.asyncNoisyFunction);
+        }
+
+        // update the policy threshold counts correspondingly as well
+        if (this.state.policyResult) {
+            this.setState({
+                policyResult: false,  // make sure we are able to switch policy thresholds
+            })
+            this.getQueryNoisyAnswer(value.value,
+                this.state.targetEpsilon.value,
+                null,
+                null,
+                this.state.visualNumPolicy.value,
+                this.asyncPolicyFunction);
+        }
     }
+
+    // Update Noisy Count with Epsilon
+    handleChangeEpsilon = value => {
+        this.setState({
+            targetEpsilon: value
+        })
+        if (this.state.noisyResult) {
+            this.setState({
+                noisyResult: false,  // make sure we are able to switch target epsilon
+            })
+        }
+        this.getQueryNoisyAnswer(this.state.queryGranularity.value,
+            value.value,
+            null,
+            null,
+            Number.MAX_SAFE_INTEGER,
+            this.asyncNoisyFunction);
+        // update the policy threshold counts correspondingly as well
+        if (this.state.policyResult) {
+            this.setState({
+                policyResult: false,  // make sure we are able to switch policy thresholds
+            })
+            this.getQueryNoisyAnswer(this.state.queryGranularity.value,
+                this.state.targetEpsilon.value,
+                null,
+                null,
+                value.value,
+                this.asyncPolicyFunction);
+        }
+    }
+
+    // Update Noisy Count with threshold
+    handleChangeThreshold = value => {
+        console.log('--------------------------', value);
+        this.setState({
+            visualNumPolicy: value,
+        })
+        if (this.state.policyResult) {
+            this.setState({
+                policyResult: false,  // make sure we are able to switch policy thresholds
+            })
+        }
+        if (this.state.targetEpsilon === null) {
+            this.getQueryNoisyAnswer(this.state.queryGranularity.value,
+                null,
+                this.state.alpha,
+                this.state.beta,
+                value.value, this.asyncPolicyFunction);
+        } else {
+            this.getQueryNoisyAnswer(this.state.queryGranularity.value,
+                this.state.targetEpsilon.value,
+                this.state.alpha,
+                this.state.beta,
+                value.value, this.asyncPolicyFunction);
+        }
+    }
+
+    // Helper for numerical policy panel for privacy budget vs threshold
+    numPolicyPanelPrivacyBudget = () => {
+        const { currentWorkload } = this.state
+        const { targetEpsilon } = this.state
+        const { queryGranularity } = this.state
+        return (
+            <Grid padding textAlign='left' style={{ margin_bottom: '0.1em', height: 20 }}>
+                <Grid.Row className='attr'>
+                    Name: {this.state.selectedAttr}
+                </Grid.Row>
+                <Grid.Row className='attr'>
+                    Type: {this.state.selectedType}  [{this.state.currentNumericalDomain.domain[0]}, {this.state.currentNumericalDomain.domain[1]}]
+                </Grid.Row>
+                <Grid.Row>
+                    <div> Query Type:
+                        <Select
+                            placeholder='Workload'
+                            className='inputEleShortLeft'
+                            options={workloadOptions}
+                            defaultInputValue='1D-Histogram'
+                            value={currentWorkload}
+                            onChange={this.handleChangeWorkload}
+                        />
+                    </div>
+                    <div> Query Granularity:
+                        <Select
+                            options={this.state.defaultPolicy}
+                            placeholder='Granularity'
+                            className='inputEleShortRight'
+                            value={queryGranularity}
+                            onChange={this.handleChangeGranularity}
+                        />
+                    </div>
+                </Grid.Row>
+                <Grid.Row>
+                    <div> Target Privacy Loss:
+                        <Select
+                            options={epsilonOptions}
+                            placeholder='Epsilon'
+                            className='inputEle'
+                            value={targetEpsilon}
+                            onChange={this.handleChangeEpsilon} />
+                    </div>
+                </Grid.Row>
+                <Grid.Row style={{ margin: '0.3em', height: 60 }}>
+                    {this.visualButton()}
+                </Grid.Row>
+            </Grid >
+        )
+    }
+
+    // Ensure that query granularity is selected before we visualize them
+    visualButton = () => {
+        if (this.state.queryGranularity === null) {
+            return (
+                null
+            )
+        } else {
+            return (
+                <Button
+                    onClick={() =>
+                        this.visualizePolicy(this.state.alpha, this.state.beta)
+                    } style={{ width: 230, height: 40 }}>Visualize Policy</Button>
+            )
+        }
+    }
+
+    // To submit the policies
+    numPolicySubmit = () => {
+        if (this.state.policyVisualization && this.state.attrClicked) {
+            return (
+                <Grid>
+                    <Grid.Row>
+                        {this.numerical_menu()}
+                    </Grid.Row>
+                    <Grid.Row></Grid.Row>
+                    <Grid.Row></Grid.Row>
+                    <Grid.Row></Grid.Row>
+                    <Grid.Row>
+                        <Button onClick={
+                            // () => this.submitPolicy()
+                            this.toggleButtonState
+                        } style={{ width: 235, height: 40 }}>Confirm</Button>
+                    </Grid.Row>
+                </Grid>
+            )
+        }
+    }
+
+    // To select the threshold
+    numPolicyVisual = () => {
+        if (this.state.policyVisualization && this.state.attrClicked) {
+            return (
+                <Grid>
+                    <Grid.Row>
+                        {this.numerical_menu_single()}
+                    </Grid.Row>
+                </Grid>
+            )
+        }
+    }
+
+    // Helper for numerical policy panel for Accuracy (alpha & beta) vs threshold
+    numPolicyPanelAcc = () => {
+        const { currentWorkload } = this.state
+        const { alpha } = this.state
+        const { beta } = this.state
+        const { queryGranularity } = this.state
+        return (
+            <Grid textAlign='left' class="numPolicyPanel">
+                <Grid.Row className='attr'>
+                    Name: {this.state.selectedAttr}
+                </Grid.Row>
+                <Grid.Row className='attr'>
+                    Type: {this.state.selectedType} [{this.state.currentNumericalDomain.domain[0]}, {this.state.currentNumericalDomain.domain[1]}]
+                </Grid.Row>
+                <Grid.Row>
+                    <div> Query Type:
+                        <Select
+                            placeholder='Workload'
+                            className='inputEleShortLeft'
+                            options={workloadOptions}
+                            defaultInputValue='1D-Histogram'
+                            value={currentWorkload}
+                            onChange={this.handleChangeWorkload}
+                        />
+                    </div>
+                    <div> Query Granularity:
+                        <Select
+                            options={this.state.defaultPolicy}
+                            placeholder='Granularity'
+                            className='inputEleShortRight'
+                            value={queryGranularity}
+                            onChange={this.handleChangeGranularity}
+                        />
+                    </div>
+                </Grid.Row>
+                <Grid.Row>
+                    <Select
+                        options={alphaOptions}
+                        placeholder='alpha'
+                        className='inputEleShortLeft'
+                        value={alpha}
+                        onChange={this.handleChangeAlpha} />
+                    <Select
+                        options={betaOptions}
+                        placeholder='beta'
+                        className='inputEleShortRight'
+                        value={beta}
+                        onChange={this.handleChangeBeta}
+                    />
+                </Grid.Row>
+                <Grid.Row style={{ margin: '0.3em', height: 60 }}>
+                    {this.visualButton()}
+                </Grid.Row>
+            </Grid >
+        )
+    }
+
 
     policyPanel = () => {
         // we want to assign granularity Options dynamically
         if (this.state.attrClicked) {
             if (this.state.selectedType === 'numerical') {
-                const { currentWorkload } = this.state
-                const { alpha } = this.state
-                const { beta } = this.state
-                const { queryGranularity } = this.state
                 return (
-                    <Grid padding textAlign='left' style={{ margin_bottom: '0.1em', height: 20 }}>
-                        <Grid.Row className='attr'>
-                            Attribute Name: {this.state.selectedAttr}
-                        </Grid.Row>
-                        <Grid.Row className='attr'>
-                            Attribute Type: {this.state.selectedType}
-                        </Grid.Row>
-                        <Grid.Row>
-                            <Select
-                                placeholder='workload'
-                                className='inputEleShortLeft'
-                                options={workloadOptions}
-                                value={currentWorkload}
-                                onChange={this.handleChangeWorkload}
-                            >
-                            </Select>
-                            <Select
-                                options={this.state.defaultPolicy}
-                                placeholder='granularity'
-                                className='inputEleShortRight'
-                                value={queryGranularity}
-                                onChange={this.handleChangeGranularity}
-                            />
-                        </Grid.Row>
-                        <Grid.Row>
-                            <Select
-                                options={alphaOptions}
-                                placeholder='alpha'
-                                className='inputEleShortLeft'
-                                value={alpha}
-                                onChange={this.handleChangeAlpha} />
-                            <Select
-                                options={betaOptions}
-                                placeholder='beta'
-                                className='inputEleShortRight'
-                                value={beta}
-                                onChange={this.handleChangeBeta}
-                            />
-                        </Grid.Row>
-                        <Grid.Row>
-                            {this.numerical_menu()}
-                        </Grid.Row>
-                        <Grid.Row></Grid.Row>
-                        <Grid.Row></Grid.Row>
-                        <Grid.Row></Grid.Row>
-                        <Grid.Row style={{ margin: '0.3em', height: 60 }}>
-                            <Button
-                                onClick={() =>
-                                    this.visualizePolicy(this.state.alpha, this.state.beta)
-                                } style={{ width: 230, height: 40 }}>Visualize Policy</Button>
-                        </Grid.Row>
-                        <Grid.Row>
-                            {this.numerical_menu_single()}
-                        </Grid.Row>
-                        <Grid.Row>
-                            <Button onClick={
-                                // () => this.submitPolicy()
-                                this.toggleButtonState
-                            } style={{ width: 235, height: 40 }}>Confirm</Button>
-                        </Grid.Row>
-                    </Grid >
+                    <Tabs>
+                        <TabList>
+                            <Tab>Accuracy vs. Threshold</Tab>
+                            <Tab>Privacy Budget vs. Threshold</Tab>
+                        </TabList>
+                        <TabPanel>
+                            <Grid columns={2}>
+                                <Grid.Column style={{ width: 300 }}>
+                                    <Grid.Row className="policyPanel">
+                                        {this.numPolicyPanelAcc()}
+                                    </Grid.Row>
+                                    <Grid.Row className="policyVisual">
+                                        {this.policyGraph()}
+                                    </Grid.Row>
+                                </Grid.Column>
+                                <Grid.Column style={{ width: 600 }}>
+                                    <Grid.Row className='chartContainer'>
+                                        <Grid columns={2}>
+                                            <Grid.Column style={{ width: 300 }}>
+                                                <Grid.Row className="trueCount">
+                                                    {this.displayTrueCounts()}
+                                                </Grid.Row>
+                                                <Grid.Row>
+                                                    {this.numPolicyVisual()}
+                                                </Grid.Row>
+                                                <Grid.Row className="blowfishCount">
+                                                    {this.displayPolicyNoisyCounts()}
+                                                </Grid.Row>
+                                            </Grid.Column>
+                                            <Grid.Column style={{ width: 300 }}>
+                                                <Grid.Row className="trueCount">
+                                                    {this.displayNoisyCounts()}
+                                                </Grid.Row>
+                                                <Grid.Row>
+                                                    {this.numPolicySubmit()}
+                                                </Grid.Row>
+                                            </Grid.Column>
+                                        </Grid>
+                                    </Grid.Row>
+                                </Grid.Column>
+                            </Grid>
+                            {/* <Grid columns={1}>
+                                    <Grid.Column style={{ width: 400 }}>
+                                        {this.privacyPanelTheshold()}
+                                    </Grid.Column>
+                                </Grid>
+                            <Grid.Row>
+                                {this.policyGraph()}
+                            </Grid.Row> */}
+                        </TabPanel>
+                        <TabPanel>
+                            <Grid columns={3}>
+                                <Grid.Column style={{ width: 300 }}>
+                                    <Grid.Row className="policyPanel">
+                                        {this.numPolicyPanelPrivacyBudget()}
+                                    </Grid.Row>
+                                    <Grid.Row className="policyVisual">
+                                        {this.policyGraph()}
+                                    </Grid.Row>
+                                </Grid.Column>
+                                <Grid.Column style={{ width: 600 }}>
+                                    <Grid.Row className='chartContainer'>
+                                        <Grid columns={2}>
+                                            <Grid.Column style={{ width: 300 }}>
+                                                <Grid.Row className="trueCount">
+                                                    {this.displayTrueCounts()}
+                                                </Grid.Row>
+                                                <Grid.Row>
+                                                    {this.numPolicyVisual()}
+                                                </Grid.Row>
+                                                <Grid.Row className="blowfishCount">
+                                                    {this.displayPolicyNoisyCounts()}
+                                                </Grid.Row>
+                                            </Grid.Column>
+                                            <Grid.Column style={{ width: 300 }}>
+                                                <Grid.Row className="trueCount">
+                                                    {this.displayNoisyCounts()}
+                                                </Grid.Row>
+                                                <Grid.Row>
+                                                    {this.numPolicySubmit()}
+                                                </Grid.Row>
+                                            </Grid.Column>
+                                        </Grid>
+                                    </Grid.Row>
+                                </Grid.Column>
+                            </Grid>
+                        </TabPanel>
+                    </Tabs>
                 )
             } else {
                 return (
@@ -642,54 +1285,49 @@ class PanelComponent extends Component {
 
     // used to generate policy graphes
     // all workload, policy, and the alpha and beta can be found in the state
-    privacyPanelTheshold = () => {
+    plotAccuracyThreshold = () => {
         // var CanvasJS = CanvasJSReact.CanvasJS;
         var CanvasJSChart = CanvasJSReact.CanvasJSChart;
-        let privacyPoints = [];
-        let dpVal = this.state.dpPrivacy;
+        let accuracyPoints = [];
+        let accuracyVal = this.state.queryAccuracy[this.state.queryAccuracy.length - 1];
         // console.log("this is the dp loss", dpVal);
-        let resComplete = null;
-        let selectedRes = null;
-        for (let i = 0; i < this.state.apiRespond.length; ++i) {
-            privacyPoints = privacyPoints.concat(
+        for (let i = 0; i < this.state.queryAccuracy.length - 1; ++i) {
+            accuracyPoints = accuracyPoints.concat(
                 {
                     x: this.state.privacyThresholds[i],
-                    y: this.state.apiRespond[i]
+                    y: this.state.queryAccuracy[i]
                 }
             )
         }
 
         const options = {
-            height: 330,
-            width: 350,
+            height: 250,
+            width: 300,
             theme: "light2",
             animationEnabled: true,
             exportEnabled: true,
             title: {
-                text: "Privacy Loss VS Thresholds",
-                fontFamily: "cursive",
-                fontSize: 22
+                text: "Accuracy VS Thresholds",
+                fontSize: 16
             },
             axisX: {
                 title: "Thresholds",
-                titleFontFamily: "cursive",
                 titleFontSize: 16,
                 interval: 1
             },
             axisY: {
-                title: "Privacy Loss",
-                titleFontFamily: "cursive",
                 titleFontSize: 16,
                 titleFontColor: "#6D78AD",
                 lineColor: "#6D78AD",
                 labelFontColor: "#6D78AD",
                 tickColor: "#6D78AD",
-                maximum: dpVal + 0.1,
+                maximum: 1,
+                minimum: accuracyVal - 0.005,
                 stripLines: [
                     {
                         label: "Differential Privacy",
                         labelFontColor: "#6D78AD",
-                        value: dpVal,
+                        value: accuracyVal,
                         showOnTop: true,
                         labelWrap: true,//false
                         labelMaxWidth: 80,
@@ -706,25 +1344,126 @@ class PanelComponent extends Component {
                 itemclick: this.toggleDataSeries
             },
             data: [{
-                click: this.queryComplete,
+                click: this.thresholdSelected,
                 type: "spline",
                 name: "Privacy Loss (Blowfish)",
                 showInLegend: true,
                 xValueFormatString: "Threshold: ####",
                 yValueFormatString: "##0.###",
-                dataPoints: privacyPoints
+                dataPoints: accuracyPoints
             },
             ]
         }
 
-        if (resComplete) {
-            this.setState({
-                queryResult: true,
-                res: selectedRes
-            })
+        console.log('This is the datapoints ', options)
+        return (
+            <div>
+                <CanvasJSChart options={options}
+                    onRef={ref => this.chart = ref}
+                />
+                {/*You can get reference to the chart instance as shown above using onRef. This allows you to access all chart properties and methods*/}
+            </div>
+        );
+    }
+
+    asyncComparisonFunction() {
+        this.setState({
+            displayAccuracyComparison: true,
+        })
+    }
+
+    thresholdSelected = (e) => {
+        const selecetedThreshold = e.dataPoint.x;
+        console.log('This is the selected threshold ', selecetedThreshold)
+        let epsilonArray = [];
+        for (let i = 0; i < epsilonOptions.length; ++i) {
+            epsilonArray = epsilonArray.concat(epsilonOptions[i].value);
+        }
+        console.log('This is the total number of epsilons we wanna visualize ', epsilonArray);
+        this.setState({
+            epsilonArr: epsilonArray,
+        },
+            () => {
+                this.getQueryNoisyAnswer(this.state.queryGranularity.value,
+                    epsilonArray,
+                    this.state.alpha,
+                    this.state.beta,
+                    selecetedThreshold,
+                    this.asyncComparisonFunction)
+            }
+        )
+    }
+
+    plotAccuracyComparison = () => {
+        var CanvasJSChart = CanvasJSReact.CanvasJSChart;
+        let blowfishAccuracy = [];
+        let dpAccuracy = [];
+        // console.log("this is the dp loss", dpVal);
+        for (let i = 0; i < this.state.selectedAccuracies.length; ++i) {
+            blowfishAccuracy = blowfishAccuracy.concat(
+                {
+                    x: this.state.epsilonArr[i],
+                    y: this.state.selectedAccuracies[i]
+                }
+            )
+            dpAccuracy = dpAccuracy.concat(
+                {
+                    x: this.state.epsilonArr[i],
+                    y: this.state.selectedDPAccuracies[i]
+                }
+            )
+        }
+        console.log("This is the final res:", blowfishAccuracy, dpAccuracy)
+
+        const options = {
+            height: 250,
+            width: 300,
+            theme: "light2",
+            animationEnabled: true,
+            exportEnabled: true,
+            title: {
+                text: "Accuracy VS Privacy Budget",
+                fontSize: 16
+            },
+            axisX: {
+                title: "Privacy Budget",
+                titleFontSize: 14,
+                logarithmic: true,
+            },
+            axisY: {
+                title: "Accuracy",
+                titleFontSize: 14,
+                titleFontColor: "#6D78AD",
+                lineColor: "#6D78AD",
+                labelFontColor: "#6D78AD",
+                tickColor: "#6D78AD",
+            },
+            toolTip: {
+                shared: true
+            },
+            legend: {
+                cursor: "pointer",
+                itemclick: this.toggleDataSeries
+            },
+            data: [{
+                type: "spline",
+                name: "Accuracy (Blowfish)",
+                showInLegend: true,
+                xValueFormatString: "Epsilon: ####",
+                yValueFormatString: "##0.###",
+                dataPoints: blowfishAccuracy
+            }, {
+                type: "spline",
+                name: "Accuracy (Differential Privacy)",
+                showInLegend: true,
+                xValueFormatString: "Epsilon: ####",
+                yValueFormatString: "##0.###",
+                dataPoints: dpAccuracy
+            },
+            ]
         }
 
-        if (this.state.attrPolicy) {
+        if (this.state.displayAccuracyComparison) {
             return (
                 <div>
                     <CanvasJSChart options={options}
@@ -736,216 +1475,30 @@ class PanelComponent extends Component {
         } else {
             return null
         }
-    }
 
-    queryComplete = (e) => {
-        console.log(e);
-        console.log('selected point ', e.dataPoint.x);
-        console.log('All possible noisy answers ', this.state.noisyRes)
-        let selectedTrueAns = [];
-        let selectedNoisyAns = [];
-        let selectedAccuracy = null;
-        // question: do we have to compare with differential privacy?
-        // let's visualize the results and compare it with DP
-        for (let i = 0; i < this.state.privacyThresholds.length; ++i) {
-            if (this.state.privacyThresholds[i] === e.dataPoint.x) {
-                selectedTrueAns = this.state.trueRes[i].trueRes;
-                selectedNoisyAns = this.state.noisyRes[i].noisyAns;
-                selectedAccuracy = this.state.queryAccuracy[i]
-                break;
-            }
-        }
-        // console.log('selected true answers ', selectedTrueAns)
-        // console.log('selected noisy answers ', selectedNoisyAns)
-        this.setState({
-            queryResult: true,
-            selectedTrueAns: selectedTrueAns,
-            selectedNoisyAns: selectedNoisyAns,
-            selectedAccuracy: selectedAccuracy
-        })
-    }
-
-    displayResNoisy = () => {
-        // console.log('Display Query results here: ', this.state.queryResult)
-        console.log('Granularity labels: ', this.state.granularityLabels)
-        if (this.state.queryResult) {
-            // var CanvasJS = CanvasJSReact.CanvasJS;
-            var CanvasJSChart = CanvasJSReact.CanvasJSChart;
-            let noisyAnsPoints = [];
-            const noisyAnswers = this.state.selectedNoisyAns;
-            const numPredicates = noisyAnswers.length;
-            // console.log("Selected Noisy Answer: ", noisyAnswers[0])
-            for (let i = 0; i < numPredicates; ++i) {
-                let y = 0;
-                if (noisyAnswers[i] >= 0) {
-                    y = noisyAnswers[i]
-                }
-                if (i === 0) {
-                    noisyAnsPoints = noisyAnsPoints.concat(
-                        {
-                            x: this.state.granularityLabels[i].lower,
-                            label: this.state.selectedAttr + "<" + this.state.granularityLabels[i].upper.toString(),
-                            y: y
-                        }
-                    )
-                } else if (i === numPredicates - 1) {
-                    noisyAnsPoints = noisyAnsPoints.concat(
-                        {
-                            x: this.state.granularityLabels[i].lower,
-                            label: this.state.granularityLabels[i].lower.toString() + "<=" + this.state.selectedAttr,
-                            y: y
-                        }
-                    )
-                } else {
-                    noisyAnsPoints = noisyAnsPoints.concat(
-                        {
-                            x: this.state.granularityLabels[i].lower,
-                            label: this.state.granularityLabels[i].lower.toString() + "<=" + this.state.selectedAttr + "<" + this.state.granularityLabels[i].upper.toString(),
-                            y: y
-                        }
-                    )
-                }
-            }
-            const options = {
-                height: 330,
-                width: 350,
-                animationEnabled: true,
-                exportEnabled: true,
-                theme: "light2", //"light1", "dark1", "dark2"
-                title: {
-                    text: 'Query Noisy Counts(Blowfish)',
-                    fontFamily: "cursive",
-                    fontSize: 18
-                },
-                axisX: {
-                    labelAngle: 50
-                },
-                axisY: {
-                    includeZero: true
-                },
-                toolTip: {
-                    shared: true
-                },
-                legend: {
-                    cursor: "pointer",
-                    itemclick: this.toggleDataSeries
-                },
-                data: [{
-                    type: "column", //change type to bar, line, area, pie, etc
-                    //indexLabel: "{y}", //Shows y value on all Data Points
-                    indexLabelFontColor: "#5A5757",
-                    indexLabelPlacement: "outside",
-                    color: "#6D78AD",
-                    dataPoints: noisyAnsPoints
-                }]
-            }
-
-            return (
-                <div>
-                    <CanvasJSChart options={options}
-                    /* onRef={ref => this.chart = ref} */
-                    />
-                    {/*You can get reference to the chart instance as shown above using onRef. This allows you to access all chart properties and methods*/}
-                </div>
-            )
-        } else {
-            return (
-                null
-            )
-        }
-    }
-
-    displayResTrue = () => {
-        // console.log('Display Query results here: ', this.state.queryResult)
-        if (this.state.queryResult) {
-            // var CanvasJS = CanvasJSReact.CanvasJS;
-            var CanvasJSChart = CanvasJSReact.CanvasJSChart;
-            let trueAnsPoints = [];
-            const trueAnswers = this.state.selectedTrueAns;
-            const numPredicates = trueAnswers.length;
-            for (let i = 0; i < numPredicates; ++i) {
-                if (i === 0) {
-                    trueAnsPoints = trueAnsPoints.concat(
-                        {
-                            x: this.state.granularityLabels[i].lower,
-                            label: this.state.selectedAttr + "<" + this.state.granularityLabels[i].upper.toString(),
-                            y: trueAnswers[i]
-                        }
-                    )
-                } else if (i === numPredicates - 1) {
-                    trueAnsPoints = trueAnsPoints.concat(
-                        {
-                            x: this.state.granularityLabels[i].lower,
-                            label: this.state.granularityLabels[i].lower.toString() + "<=" + this.state.selectedAttr,
-                            y: trueAnswers[i]
-                        }
-                    )
-                } else {
-                    trueAnsPoints = trueAnsPoints.concat(
-                        {
-                            x: this.state.granularityLabels[i].lower,
-                            label: this.state.granularityLabels[i].lower.toString() + "<=" + this.state.selectedAttr + "<" + this.state.granularityLabels[i].upper.toString(),
-                            y: trueAnswers[i]
-                        }
-                    )
-                }
-            }
-            const options = {
-                height: 330,
-                width: 350,
-                animationEnabled: true,
-                exportEnabled: true,
-                theme: "light2", //"light1", "dark1", "dark2"
-                title: {
-                    text: 'Query True Counts(Blowfish)',
-                    fontFamily: "cursive",
-                    fontSize: 18
-                },
-                axisX: {
-                    labelAngle: 50
-                },
-                axisY: {
-                    includeZero: true
-                },
-                toolTip: {
-                    shared: true
-                },
-                legend: {
-                    cursor: "pointer",
-                    itemclick: this.toggleDataSeries
-                },
-                data: [{
-                    type: "column", //change type to bar, line, area, pie, etc
-                    //indexLabel: "{y}", //Shows y value on all Data Points
-                    indexLabelFontColor: "#5A5757",
-                    indexLabelPlacement: "outside",
-                    color: "#6D78AD",
-                    dataPoints: trueAnsPoints
-                }]
-            }
-
-            return (
-                <div>
-                    <CanvasJSChart options={options}
-                    /* onRef={ref => this.chart = ref} */
-                    />
-                    {/*You can get reference to the chart instance as shown above using onRef. This allows you to access all chart properties and methods*/}
-                </div>
-            )
-        } else {
-            return (
-                null
-            )
-        }
     }
 
     displayStats = () => {
-        if (this.state.queryResult) {
+        if (this.state.attrPolicy) {
             return (
-                <Grid.Row className='attr'>
-                    Query Accuracy: {this.state.selectedAccuracy}
-                </Grid.Row>
+                <Grid columns={1}>
+                    <Grid.Column style={{ width: 350 }}>
+                        <Grid.Row className="querySummaryPosition">Outstanding Thresholds wrt Query Accuracy.</Grid.Row>
+                        <Grid.Row className="resultPlot">
+                            {this.plotAccuracyThreshold()}
+                        </Grid.Row>
+                        <Grid.Row className="thresholdComparisonDesc">
+                            Please select the points in the graph above to plot Comparison betweeen Blowfish and Differential Privacy
+                        </Grid.Row>
+                        <Grid.Row className="chartContainer">
+                            {this.plotAccuracyComparison()}
+                        </Grid.Row>
+                    </Grid.Column>
+                </Grid>
+
             )
+        } else {
+            return null;
         }
     }
 
@@ -962,7 +1515,7 @@ class PanelComponent extends Component {
 
     render() {
         return (
-            <Segment.Group className='bottomPanels' >
+            <Segment.Group className="mainPanelSize">
                 <Grid className="gridStyle" columns={4}>
                     <Grid.Column style={{ width: 250 }}>
                         <SchemaComponent
@@ -971,50 +1524,15 @@ class PanelComponent extends Component {
                         ></SchemaComponent>
                     </Grid.Column>
                     <Divider vertical style={{ left: 240, height: 360 }} />
-                    <Grid.Column style={{ width: 300 }}>
-                        <Grid rows={1}>
-                            <Grid.Row style={{ margin: '3em', height: 290 }}>
-                                {this.policyPanel()}
-                            </Grid.Row>
-                        </Grid>
+                    <Grid.Column style={{ width: 900 }}>
+                        {this.policyPanel()}
                     </Grid.Column>
-                    <Divider vertical style={{ left: 535, height: 360 }}></Divider>
-                    <Grid.Column style={{ width: 500 }}>
-                        <Grid rows={2}>
-                            <Grid.Row className='chartContainer'>
-                                <Grid columns={1}>
-                                    <Grid.Column style={{ width: 400 }}>
-                                        {this.privacyPanelTheshold()}
-                                    </Grid.Column>
-                                </Grid>
-                            </Grid.Row>
-                            <Divider fitted />
-                            <Grid.Row>
-                                {this.policyGraph()}
-                            </Grid.Row>
-                        </Grid>
-                    </Grid.Column>
-                    <Divider vertical style={{ left: 1035, height: 360 }}></Divider>
-                    <Grid.Column style={{ width: 850 }}>
-                        <Grid rows={2}>
-                            <Grid.Row className='chartContainer'>
-                                <Grid columns={2}>
-                                    <Grid.Column style={{ width: 375 }}>
-                                        {this.displayResNoisy()}
-                                    </Grid.Column>
-                                    <Grid.Column style={{ width: 375 }}>
-                                        {this.displayResTrue()}
-                                    </Grid.Column>
-                                </Grid>
-                            </Grid.Row>
-                            <Divider fitted />
-                            <Grid.Row style={{ margin: '3em', height: 290 }}>
-                                {this.displayStats()}
-                            </Grid.Row>
-                        </Grid>
+                    <Divider vertical style={{ left: 1135, height: 360 }}></Divider>
+                    <Grid.Column style={{ width: 350 }}>
+                        {this.displayStats()}
                     </Grid.Column>
                 </Grid>
-            </Segment.Group >
+            </Segment.Group>
         )
     }
 }

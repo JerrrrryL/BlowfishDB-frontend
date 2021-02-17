@@ -1,5 +1,6 @@
 import React, { Component } from 'react'
 import Select from 'react-select'
+import { Grid } from 'semantic-ui-react'
 import '../App.css'
 import PanelComponent from './Panel'
 
@@ -21,26 +22,40 @@ class App extends Component {
 
   render() {
     return (
-      <div className='Layout'>
-        <div>
+      <Grid>
+        <Grid.Row className="titlePosition">
           <h1 className='sysTitle'>Dynamic Blowfish</h1>
-        </div>
-        <div className='selections'>
-          <div className='selectData'>
-            <label className='fontDataset'>Select Dataset for demonstration</label>
-            <Select options={dbOptions}
+        </Grid.Row>
+        <Grid.Row className="selectDatasetPosition">
+          <Grid.Column style={{ width: 300, height: 40 }} className="fontDataset">
+            Select Dataset for Privacy Analysis
+          </Grid.Column>
+          <Grid.Column style={{ width: 235, height: 40 }}>
+            <Select className="selectDataset" options={dbOptions}
               onChange={() => {
                 this.setState({
                   datasetSelected: true
                 })
               }} />
-          </div>
-        </div>
-        <PanelComponent
-          datasetSelected={this.state.datasetSelected}
-          workloadSelected={this.state.workloadSelected}>
-        </PanelComponent>
-      </div>
+          </Grid.Column>
+        </Grid.Row>
+        <Grid.Row className='bottomPanels'>
+          <PanelComponent
+            datasetSelected={this.state.datasetSelected}
+            workloadSelected={this.state.workloadSelected}>
+          </PanelComponent>
+        </Grid.Row>
+      </Grid>
+      // <div className='Layout'>
+      //   <div>
+      //     <h1 className='sysTitle'>Dynamic Blowfish</h1>
+      //   </div>
+      //   <div className='selections'>
+      //     <div className='selectData'>
+      //       <label className='fontDataset'>Select Dataset for demonstration</label>
+      //     </div>
+      //   </div>
+      // </div>
     )
   }
 }

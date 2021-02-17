@@ -18,16 +18,60 @@
 /* css for select workload */
 .fontWorkload {
   font-size: 17px;
-  font-family: cursive;
 }
 
 /* css for select dataset */
 .fontDataset{
   font-size: 17px;
-  font-family: cursive;
+}
+
+.policyPanel{
+  margin-left: 1.5em;
+  margin-top: 0.5em;
+  height: 25em;
+}
+
+.trueCount{
+  margin-top: 0.5em;
+  margin-left: -1.5em;
+  height: 23em;
+}
+
+.resultPlot{
+  margin-top: 2em;
+  height: 22.2em;
+}
+
+.policyCounts{
+  margin-left: 0.5em;
+  height: 23em;
+}
+
+.attr{
+  height: 3em;
+}
+
+.numPolicyPanel{
+  margin-top: 0.5em;
+  margin-bottom: 0.5em;
+  height: 20em;
+}
+
+.policyVisual{
+  margin-left: 0em;
+}
+
+.policyVisualDesc{
+  margin-left: 0.5em;
+}
+
+.policyDescription{
+  margin-left: 2em;
+  font-size: 16px;
 }
 
 .inputEle{
+  margin-top: 0.5em;
   height: 4ch;
   width: 30ch;
 }
@@ -44,19 +88,53 @@
   width: 14.5ch;
 }
 
+.inputEleShort{
+  margin-top: -1.5em;
+  height: 4ch;
+  width: 14.5ch;
+}
+
+.policyThresholdLabel{
+  margin-top: -1em;
+}
+
 .chartContainer{
-  margin-left: 5em;
+  margin-left: 0em;
   margin-top: 1em;
-  height: 44.5ch
+  height: 44.5ch;
+  width: 300;
+}
+
+.thresholdComparisonDesc{
+  margin-top: 1em;
+}
+
+.blowfishCountLabel{
+  margin-left: 1em;
+  margin-right: 0.15em;
+}
+
+.blowfishCount{
+  margin-left: -1.5em;
+}
+
+.blowfishThreshold{
+  margin-top: -1em;
+}
+
+.querySummaryPosition{
+  margin-top: 1em;
+  margin-left: 0.5em;
 }
 
 .bottomPanels{
-  height: 20cm;
-  width: 50cm;
+  margin-top: -1em;
+  margin-left: 11.5%;
 }
 
-.attr{
-  font-family: cursive;
+.mainPanelSize{
+  height: 20cm;
+  width: 40cm;
 }
 
 .gridStyle{
@@ -65,14 +143,33 @@
 
 .sysTitle{
   font-size: 25px;
-  font-family: cursive;
-  text-align: center;
+}
+
+.titlePosition{
+  margin-left: 43%;
+}
+
+.selectDatasetPosition{
+  margin-top: -0.5em;
+  margin-left: 35%;
+}
+
+.selectDataset{
+  margin-left: -2em;
+  margin-top: -0.5em;
 }
 
 @media (prefers-reduced-motion: no-preference) {
   .App-logo {
     animation: App-logo-spin infinite 20s linear;
   }
+}
+
+*{
+  -ms-overflow-style: none;
+}
+::-webkit-scrollbar {
+  display: none;
 }
 
 .App-header {

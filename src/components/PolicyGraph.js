@@ -1,5 +1,6 @@
 import React, { Component } from 'react'
 import CytoscapeComponent from 'react-cytoscapejs'
+import { Grid } from 'semantic-ui-react'
 
 // For a given (categorical) policy, visualize the policy graph for it
 
@@ -9,7 +10,8 @@ class PolicyGraph extends Component {
     }
     state = {
         w: 0,
-        h: 0
+        h: 0,
+        subGraph: false,
     }
 
     componentDidMount = () => {
@@ -27,9 +29,9 @@ class PolicyGraph extends Component {
     }
 
     render() {
-        let x1 = 30;
+        let x1 = 0;
         let y1 = 30;
-        let w = 450;
+        let w = 280;
         let h = 280;
         let nodesEdges = []
         // this is the case when we are dealing with categorical data
@@ -39,7 +41,7 @@ class PolicyGraph extends Component {
                 // console.log(this.props.attributeDomain[i])
                 let curNode = {
                     data: { id: this.props.attributeDomain[i].value, label: this.props.attributeDomain[i].label },
-                    position: { x: 240, y: 50 },
+                    position: { x: 10, y: 50 },
                     style: {
                         'background-color': '#d4d4d4',
                         "text-valign": "center",
@@ -69,13 +71,19 @@ class PolicyGraph extends Component {
             // when attribute type is numerical
             // console.log(this.props.attributeDomain)
             // console.log(this.props.attrThreshold)
-            let displayNodes = 12;
-            let lowerBound = this.props.attributeDomain.domain[0];
-            let upperBound = this.props.attributeDomain.domain[1];
-            let attrName = this.props.attributeDomain.attrName;
-            let defaultGranularity = Math.round((upperBound - lowerBound) / displayNodes)
-            // console.log(defaultGranularity)
-            let previousBound = lowerBound + defaultGranularity; // the lower bound for each node in the policy graph
+            const granularity = this.props.granularity.value;
+            // console.log('This is the granularity:', granularity)
+            const lowerBound = this.props.attributeDomain.domain[0];
+            const upperBound = this.props.attributeDomain.domain[1];
+            let subGraph = false;
+            let displayNodes = 10;
+            if (Math.ceil((upperBound - lowerBound) / granularity) < displayNodes) {
+                displayNodes = Math.ceil((upperBound - lowerBound) / granularity)
+            } else {
+                subGraph = true
+            }
+            const attrName = this.props.attributeDomain.attrName;
+            let previousBound = lowerBound + granularity; // the lower bound for each node in the policy graph
             // set the default granularity to display here
             // add nodes to the graph
             for (let i = 0; i < displayNodes; ++i) {
@@ -87,11 +95,12 @@ class PolicyGraph extends Component {
                             id: i,
                             label: attrName + "<" + previousBound
                         },
-                        position: { x: 290, y: 50 },
+                        position: { x: 200, y: 50 },
                         style: {
                             'background-color': '#d4d4d4',
                             "text-valign": "center",
-                            "text-halign": "center"
+                            "text-halign": "center",
+                            "font-size": 12,
                         }
                     }
                 } else if (i === displayNodes - 1) {
@@ -100,40 +109,46 @@ class PolicyGraph extends Component {
                             id: i,
                             label: previousBound + "<=" + attrName
                         },
-                        position: { x: 290, y: 50 },
+                        position: { x: 150, y: 50 },
                         style: {
                             'background-color': '#d4d4d4',
                             "text-valign": "center",
-                            "text-halign": "center"
+                            "text-halign": "center",
+                            "font-size": 12,
                         }
                     }
                 } else {
-                    let tempUpper = previousBound + defaultGranularity;
+                    let tempUpper = previousBound + granularity;
                     curNode = {
                         data: {
                             id: i,
                             label: previousBound + "<=" + attrName + "<" + tempUpper
                         },
-                        position: { x: 290, y: 50 },
+                        position: { x: 200, y: 50 },
                         style: {
                             'background-color': '#d4d4d4',
                             "text-valign": "center",
-                            "text-halign": "center"
+                            "text-halign": "center",
+                            "font-size": 12,
                         }
                     }
                 }
                 nodesEdges = nodesEdges.concat(curNode)
                 if (i !== 0) {
-                    previousBound += defaultGranularity;
+                    previousBound += granularity;
                 }
             }
 
             // note that nodes are sorted
             let threshold = 0;
+            let displayDP = false;
             if (this.props.attrThreshold !== null) {
                 threshold = this.props.attrThreshold.value;
+            } else {
+                threshold = Number.MAX_SAFE_INTEGER;
+                displayDP = true;
             }
-            let degree = Math.ceil(threshold / defaultGranularity);
+            let degree = Math.ceil(threshold / granularity);
             // console.log(degree)
             for (let i = 0; i < displayNodes; ++i) {
                 // draw edges between nodes based on thresholds
@@ -150,34 +165,118 @@ class PolicyGraph extends Component {
                     }
                 }
             }
+            let layout = {
+                name: 'circle',
+
+                fit: false, // whether to fit to viewport
+                padding: 10, // fit padding
+                boundingBox: { x1, y1, w, h }, // constrain layout bounds; { x1, y1, x2, y2 } or { x1, y1, w, h }
+                animate: true, // whether to transition the node positions
+                animationDuration: 5, // duration of animation in ms if enabled
+                animationEasing: undefined, // easing of animation if enabled
+                radius: 105,
+                animateFilter: function (node, i) { return true; },
+                ready: undefined, // callback on layoutready
+                stop: undefined, // callback on layoutstop
+                nodeSeparation: 4,
+                transform: function (node, position) { return position; } // transform a given node position. Useful for changing flow direction in discrete layouts 
+            };
+
+            if (subGraph) {
+                y1 -= 10;
+                x1 -= 5;
+                layout.boundingBox = { x1, y1, w, h };
+                if (displayDP) {
+                    return (
+                        <Grid.Row> A subgraph of 10 nodes is displayed below. Displayed Policy: Differential Privacy
+                            <CytoscapeComponent
+                                elements={nodesEdges}
+                                style={{ width: this.state.w, height: this.state.h }}
+                                cy={(cy) => { this.cy = cy }}
+                                layout={layout}
+                            />
+                        </Grid.Row>
+                    )
+                } else {
+                    return (
+                        <Grid.Row className="policyVisualDesc"> A subgraph of 10 nodes is displayed below. Displayed Policy: Blowfish Policy
+                            <CytoscapeComponent
+                                elements={nodesEdges}
+                                style={{ width: this.state.w, height: this.state.h }}
+                                cy={(cy) => { this.cy = cy }}
+                                layout={layout}
+                            />
+                        </Grid.Row>
+                    )
+                }
+            } else {
+                // THIS WILL BE CALLED TWICE BECAUSE REACT JS's NATURE, NEED TO FIX LATER
+                if (displayDP) {
+                    return (
+                        <Grid.Row className="policyVisualDesc"> Displayed Policy: Differential Privacy
+                            <CytoscapeComponent
+                                elements={nodesEdges}
+                                style={{ width: this.state.w, height: this.state.h }}
+                                cy={(cy) => { this.cy = cy }}
+                                layout={layout}
+                            />
+                        </Grid.Row>
+                    )
+                } else {
+                    return (
+                        <Grid.Row className="policyVisualDesc"> Displayed Policy: Blowfish Policy
+                            <CytoscapeComponent
+                                elements={nodesEdges}
+                                style={{ width: this.state.w, height: this.state.h }}
+                                cy={(cy) => { this.cy = cy }}
+                                layout={layout}
+                            />
+                        </Grid.Row>
+                    )
+                }
+            }
         }
-        const layout = {
-            name: 'circle',
+        // const layout = {
+        //     name: 'circle',
 
-            fit: false, // whether to fit to viewport
-            padding: 30, // fit padding
-            boundingBox: { x1, y1, w, h }, // constrain layout bounds; { x1, y1, x2, y2 } or { x1, y1, w, h }
-            animate: true, // whether to transition the node positions
-            animationDuration: 500, // duration of animation in ms if enabled
-            animationEasing: undefined, // easing of animation if enabled
-            radius: 150,
-            animateFilter: function (node, i) { return true; },
-            ready: undefined, // callback on layoutready
-            stop: undefined, // callback on layoutstop
-            nodeSeparation: 3,
-            transform: function (node, position) { return position; } // transform a given node position. Useful for changing flow direction in discrete layouts 
-        };
+        //     fit: false, // whether to fit to viewport
+        //     padding: 10, // fit padding
+        //     boundingBox: { x1, y1, w, h }, // constrain layout bounds; { x1, y1, x2, y2 } or { x1, y1, w, h }
+        //     animate: true, // whether to transition the node positions
+        //     animationDuration: 500, // duration of animation in ms if enabled
+        //     animationEasing: undefined, // easing of animation if enabled
+        //     radius: 105,
+        //     animateFilter: function (node, i) { return true; },
+        //     ready: undefined, // callback on layoutready
+        //     stop: undefined, // callback on layoutstop
+        //     nodeSeparation: 4,
+        //     transform: function (node, position) { return position; } // transform a given node position. Useful for changing flow direction in discrete layouts 
+        // };
 
-        return (
-            <div>
-                <CytoscapeComponent
-                    elements={nodesEdges}
-                    style={{ width: this.state.w, height: this.state.h }}
-                    cy={(cy) => { this.cy = cy }}
-                    layout={layout}
-                />
-            </div>
-        )
+        // if (subGraph) {
+        //     return (
+        //         <Grid>
+        //             <Grid.Row className='attr'></Grid.Row>
+        //             <Grid.Row>
+        //                 <CytoscapeComponent
+        //                     elements={nodesEdges}
+        //                     style={{ width: this.state.w, height: this.state.h }}
+        //                     cy={(cy) => { this.cy = cy }}
+        //                     layout={layout}
+        //                 />
+        //             </Grid.Row>
+        //         </Grid>
+        //     )
+        // } else {
+        //     return (
+        //         <CytoscapeComponent
+        //             elements={nodesEdges}
+        //             style={{ width: this.state.w, height: this.state.h }}
+        //             cy={(cy) => { this.cy = cy }}
+        //             layout={layout}
+        //         />
+        //     )
+        // }
     }
 }
 

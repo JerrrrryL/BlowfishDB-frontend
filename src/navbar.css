@@ -1,0 +1,54 @@
+.tabStyleLeft {
+    display: inline-block;
+    border: 1px solid transparent;
+    border-bottom: none;
+    bottom: -1px;
+    position: relative;
+    list-style: none;
+    padding: 20px 24px;
+    cursor: pointer;
+    font-size: 18px;
+    color: white;
+    margin-left: 23%;
+}
+
+.tabStyleMiddle {
+    display: inline-block;
+    border: 1px solid transparent;
+    border-bottom: none;
+    bottom: -1px;
+    position: relative;
+    list-style: none;
+    padding: 20px 24px;
+    cursor: pointer;
+    font-size: 18px;
+    color: white;
+    margin-left: 1%;
+}
+
+.tabStyleRight {
+    display: inline-block;
+    border: 1px solid transparent;
+    border-bottom: none;
+    bottom: -1px;
+    position: relative;
+    list-style: none;
+    padding: 20px 24px;
+    cursor: pointer;
+    font-size: 18px;
+    color: white;
+    margin-left: 1%;
+}
+
+.tabSelected {
+    background: #fff;
+    color: black;
+}
+
+.tablistStyle {
+    border-bottom: 1px #aaa;
+    margin: 0 0 10px;
+    padding: 0;
+    background-color: rgb(113, 185, 252);
+    width: 200em;
+  }

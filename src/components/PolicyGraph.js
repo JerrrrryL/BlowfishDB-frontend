@@ -76,7 +76,7 @@ class PolicyGraph extends Component {
             const lowerBound = this.props.attributeDomain.domain[0];
             const upperBound = this.props.attributeDomain.domain[1];
             let subGraph = false;
-            let displayNodes = 10;
+            let displayNodes = 5;
             if (Math.ceil((upperBound - lowerBound) / granularity) < displayNodes) {
                 displayNodes = Math.ceil((upperBound - lowerBound) / granularity)
             } else {
@@ -188,7 +188,7 @@ class PolicyGraph extends Component {
                 layout.boundingBox = { x1, y1, w, h };
                 if (displayDP) {
                     return (
-                        <Grid.Row> A subgraph of 10 nodes is displayed below. Displayed Policy: Differential Privacy
+                        <Grid.Row> A subgraph of 5 nodes is displayed below. Displayed Policy: Differential Privacy
                             <CytoscapeComponent
                                 elements={nodesEdges}
                                 style={{ width: this.state.w, height: this.state.h }}
@@ -199,7 +199,7 @@ class PolicyGraph extends Component {
                     )
                 } else {
                     return (
-                        <Grid.Row className="policyVisualDesc"> A subgraph of 10 nodes is displayed below. Displayed Policy: Blowfish Policy
+                        <Grid.Row className="policyVisualDesc"> A subgraph of 5 nodes is displayed below. Displayed Policy: Blowfish Policy
                             <CytoscapeComponent
                                 elements={nodesEdges}
                                 style={{ width: this.state.w, height: this.state.h }}

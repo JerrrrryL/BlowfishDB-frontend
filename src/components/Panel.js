@@ -12,8 +12,7 @@ const url = '/'
 
 const workloadOptions = [
     { value: '1D-Histogram', label: '1D-Histogram' },
-    { value: '1D-Range', label: '1D-Range' },
-    { value: '2D-Range', label: '2D-Range' }
+    { value: '1D-Cumulative', label: '1D-Acc' }
 ]
 
 const alphaOptions = [
@@ -131,7 +130,6 @@ class PanelComponent extends Component {
             attrClicked: false,
             selectedAttr: null,
             selectedType: null,
-            totalPolicy: [], // the policy for all attributes, user select from default policy or specify own
             alpha: null, // alpha and beta for APEx
             beta: null,
             defaultPolicy: null, // {'attrName': '', 'policy': []} used for dropdown menu for users to select
@@ -139,14 +137,15 @@ class PanelComponent extends Component {
             currentWorkload: null, // current workload selected by the user
             policyVisualization: false, // if we want to visualize the policy
             currentNumericalDomain: null, // current domain for numerical attribute
+            currentCategoricalDomain: null,  // domain for current categorical attribute
             currentCatPolicy: null, // sensitivity set by user, used for both privacy analysis and attribute visualization
             currentNumPolicy: null, // threshold by user, used for privacy analysis but not attribute visualization 
             visualNumPolicy: null, // threshold for the user to visualize policy
-            apiLoading: true,
-            apiRespond: [],  // the epsilon values
             policyNoisyRes: [],  // the noisy answers with Threshold (Blowfish)
             noisyRes: [],  // the noisy answers with DP
+            noisyAccRes: [],  // the noisy accumulative answers with DP
             trueRes: [],  // the true answers
+            trueAccRes: [],  // the true accumulative answers
             privacyThresholds: [], // the x values for privacy analysis
             dpPrivacy: null,  // the privacy loss for differential privacy
             trueResult: false,  // if this is true, we have the true query results ready
@@ -160,7 +159,8 @@ class PanelComponent extends Component {
             displayAccuracyComparison: false,  // if this is true, we display the comparison between blowfish and DP
             selectedAccuracies: [],  // the accuracies for epsilons
             selectedDPAccuracies: [],  // the dp accuracies for epsilons
-            epsilonArr: [],  // available epsilons 
+            epsilonArr: [],  // available epsilons
+            policies: [],  // the policy of all attributes
         }
 
         this.getButtonsUsingMap = this.getButtonsUsingMap.bind(this);
@@ -194,8 +194,10 @@ class PanelComponent extends Component {
             selectedAccuracies: [],
             selectedDPAccuracies: [],
             epsilonArr: [],
+            currentNumericalDomain: null,
+            currentCategoricalDomain: null,
         });
-        console.log(this.state.defaultPolicy)
+        // console.log(this.state.defaultPolicy)
         let delPolicy = null;
         if (attrType === 'numerical') {
             // set the default thresholds, we will set display 10 threshold values
@@ -223,6 +225,9 @@ class PanelComponent extends Component {
                 for (let i = 1; i < 11; ++i) {
                     curPolicy = curPolicy.concat(100 * i)
                 }
+                for (let i = 1; i < 11; ++i) {
+                    curPolicy = curPolicy.concat(1000 * i)
+                }
 
             }
             delPolicy = { attrName: attrName, policy: curPolicy }
@@ -231,6 +236,9 @@ class PanelComponent extends Component {
             for (let i = 0; i < this.state.databaseDomain.length; ++i) {
                 if (this.state.databaseDomain[i].attrName === attrName) {
                     senSet = this.state.databaseDomain[i].domain;
+                    this.setState({
+                        currentCategoricalDomain: senSet,
+                    })
                 }
             }
             delPolicy = { attrName: attrName, policy: senSet };
@@ -251,7 +259,32 @@ class PanelComponent extends Component {
 
     // visualize the policy graph
     visualizePolicy = () => {
-        console.log('------------------------This is here-----------------------')
+        let policy = [];
+        for (let i = 0; i < this.state.databaseSchema.length; ++i) {
+            if (this.state.databaseSchema[i].attrType === 'numerical') {
+                let curPolicy = null;
+                curPolicy = {
+                    attrName: this.state.databaseSchema[i].attrName,
+                    policy: Number.MAX_SAFE_INTEGER
+                }
+                policy = policy.concat(curPolicy)
+            } else {
+                let curPolicy = {
+                    attrName: this.state.databaseSchema[i].attrName,
+                    policy: this.state.databaseDomain[i].domain,
+                }
+                policy = policy.concat(curPolicy)
+            }
+        }
+        console.log(policy)
+        this.setState({
+            policies: policy,
+        },
+            () => {
+                // console.log(this.state.policies);
+                this.props.updatePolicy(this.state.policies);
+            }
+        )
         this.setState({
             policyVisualization: true
         })
@@ -361,6 +394,7 @@ class PanelComponent extends Component {
     // get the true answer for queries, only the attribute name and granularity are needed
     getQueryTrueAnswer(granu, callback) {
         if (this.state.selectedType === 'numerical') {
+            // numerical case
             let workload = null;
             if (this.state.currentWorkload === null) {
                 workload = '1D-Histogram'
@@ -369,8 +403,6 @@ class PanelComponent extends Component {
                 "granularity": granu,
                 "lower": this.state.currentNumericalDomain.domain[0],
                 "upper": this.state.currentNumericalDomain.domain[1],
-                "alpha": this.state.alpha,
-                "beta": this.state.beta,
                 "workload": workload,
                 "attrName": this.state.selectedAttr,
                 "attrType": this.state.selectedType,
@@ -387,12 +419,72 @@ class PanelComponent extends Component {
             const request = new Request(url, requestOption)
             fetch(request).then((response) => response.json())
                 .then((data) => {
-                    const res = data.results;
-                    // console.log('This is the API response: ', res)
-                    this.setState({
-                        trueRes: res,
-                    })
-                    callback();
+                    // we will handle range queries here
+                    console.log('This is the API response: ', data)
+                    if (workload === '1D-Histogram') {
+                        const res = data.results;
+                        this.setState({
+                            trueRes: res,
+                        },
+                            () => { callback() }
+                        )
+                    } else if (workload === '1D-Cumulative') {
+                        const res = data.results;
+                        const accRes = data.acc_results;
+                        this.setState({
+                            trueRes: res,
+                            trueAccRes: accRes
+                        },
+                            () => { callback() }
+                        )
+                    }
+                })
+                .catch((err) => console.log(err))
+        } else {
+            // categorical case
+            let workload = null;
+            if (this.state.currentWorkload === null) {
+                workload = '1D-Histogram'
+            } else { workload = this.state.currentWorkload.value }
+            // currently we don't have a way to define granularity on categorical data
+            // we will just assume that each categorical value is 
+            const data = {
+                "workload": workload,
+                "attrName": this.state.selectedAttr,
+                "attrType": this.state.selectedType,
+                "domain": this.state.currentCategoricalDomain,
+            }
+            console.log('This is the data', data);
+            const headers = new Headers();
+            headers.append('Content-Type', 'application/json')
+
+            const requestOption = {
+                method: 'POST',
+                headers,
+                body: JSON.stringify(data)
+            }
+            const request = new Request(url, requestOption)
+            fetch(request).then((response) => response.json())
+                .then((data) => {
+                    // we will handle range queries here
+                    console.log('This is the API response: ', data)
+                    if (workload === '1D-Histogram') {
+                        const res = data.results;
+                        this.setState({
+                            trueRes: res,
+                        },
+                            () => { callback() }
+                        )
+                    } else if (workload === '1D-Cumulative') {
+                        const res = data.results;
+                        const accRes = data.acc_results;
+                        this.setState({
+                            trueRes: res,
+                            trueAccRes: accRes
+                        },
+                            () => { callback() }
+                        )
+                    }
                 })
                 .catch((err) => console.log(err))
         }
@@ -432,12 +524,13 @@ class PanelComponent extends Component {
             const request = new Request(url, requestOption)
             fetch(request).then((response) => response.json())
                 .then((data) => {
-                    const res = data.results;
-                    console.log('This is the API response: ', res)
+                    console.log('This is the API response: ', data)
                     if (isArray) {
+                        const res = data.results;
                         let accuracies = [];
                         let dpaccuracies = [];
                         // When the epsilon value is an array
+                        // Used in the case where we derive the final result
                         for (let i = 0; i < res.length; ++i) {
                             accuracies = accuracies.concat(res[i].accuracy);
                             ++i;
@@ -448,21 +541,75 @@ class PanelComponent extends Component {
                         this.setState({
                             selectedAccuracies: accuracies,
                             selectedDPAccuracies: dpaccuracies,
-                        })
+                        },
+                            () => { callback() }
+                        )
                     } else {
+                        const res = data.results.noisy_answer;
                         // When we only give a single epsilon value
                         // or a single pair of alpha and beta
+                        // Used in the case where we plot the graphs for visualization
                         if (threshold === Number.MAX_SAFE_INTEGER) {
+                            // DP case
                             this.setState({
-                                noisyRes: res,
-                            })
+                                noisyRes: res
+                            },
+                                () => { callback() }
+                            )
                         } else {
+                            // normal blowfish threshold
                             this.setState({
                                 policyNoisyRes: res,
-                            })
+                            },
+                                () => { callback() }
+                            )
                         }
                     }
-                    callback();
+                })
+                .catch((err) => console.log(err))
+        } else {
+            const workload = this.state.currentWorkload.value;
+            const data = {
+                "workload": workload,
+                "domain": this.state.currentCategoricalDomain,
+                "attrName": this.state.selectedAttr,
+                "attrType": this.state.selectedType,
+                "alpha": alpha,
+                "beta": beta,
+                "target_epsilon": epsilon,
+                "target_dp": threshold,  // TODO: replace this by categorical thresholds
+            }
+            const headers = new Headers();
+            headers.append('Content-Type', 'application/json')
+
+            const requestOption = {
+                method: 'POST',
+                headers,
+                body: JSON.stringify(data)
+            }
+            const request = new Request(url, requestOption)
+            fetch(request).then((response) => response.json())
+                .then((data) => {
+                    console.log('This is the API response: ', data.results.noisy_answer)
+                    const res = data.results.noisy_answer;
+                    // When we only give a single epsilon value
+                    // or a single pair of alpha and beta
+                    // Used in the case where we plot the graphs for visualization
+                    if (threshold === null) {
+                        // DP case
+                        this.setState({
+                            noisyRes: res
+                        },
+                            () => { callback() }
+                        )
+                    } else {
+                        // normal blowfish threshold
+                        this.setState({
+                            policyNoisyRes: res,
+                        },
+                            () => { callback() }
+                        )
+                    }
                 })
                 .catch((err) => console.log(err))
         }
@@ -565,8 +712,8 @@ class PanelComponent extends Component {
                     this.getQueryNoisyAnswer(
                         this.state.queryGranularity.value,
                         null,
-                        this.state.alpha,
-                        this.state.beta,
+                        this.state.alpha.value,
+                        this.state.beta.value,
                         Number.MAX_SAFE_INTEGER,
                         this.asyncNoisyFunction,
                     );
@@ -584,8 +731,8 @@ class PanelComponent extends Component {
                     this.getQueryNoisyAnswer(
                         this.state.queryGranularity.value,
                         null,
-                        this.state.alpha,
-                        this.state.beta,
+                        this.state.alpha.value,
+                        this.state.beta.value,
                         Number.MAX_SAFE_INTEGER,
                         this.asyncNoisyFunction,
                     );
@@ -598,7 +745,69 @@ class PanelComponent extends Component {
         this.setState({
             workloadSelected: true,
             currentWorkload: value
-        })
+        },
+            () => {
+                let alpha = null;
+                let beta = null;
+                if (this.state.alpha !== null) { alpha = this.state.alpha.value; }
+                if (this.state.beta !== null) { beta = this.state.beta.value; }
+                if (this.state.selectedType === 'numerical') {
+                    // The case when the selected attribute is numerical
+                    // we already display the true count result
+                    if (this.state.trueResult) {
+                        this.setState({
+                            trueResult: false,  // if we switch workload type we want the true answer to change
+                        },
+                            () => {
+                                this.getQueryTrueAnswer(this.state.queryGranularity.value,
+                                    this.asyncResFunction)
+                            }
+                        )
+                    }
+                    // we already display the DP query result
+                    if (this.state.noisyResult) {
+                        this.setState({
+                            noisyResult: false,
+                        },
+                            () => {
+                                let eps = null;
+                                if (this.state.targetEpsilon !== null) {
+                                    eps = this.state.targetEpsilon.value
+                                }
+                                this.getQueryNoisyAnswer(this.state.queryGranularity.value,
+                                    eps,
+                                    alpha,
+                                    beta,
+                                    Number.MAX_SAFE_INTEGER,
+                                    this.asyncNoisyFunction);
+                            })
+                    }
+
+                    // update the policy threshold counts correspondingly as well
+                    if (this.state.policyResult) {
+                        this.setState({
+                            policyResult: false,  // make sure we are able to switch policy thresholds
+                        },
+                            () => {
+                                let eps = null
+                                if (this.state.targetEpsilon !== null) {
+                                    eps = this.state.targetEpsilon.value
+                                }
+                                this.getQueryNoisyAnswer(this.state.queryGranularity.value,
+                                    eps,
+                                    alpha,
+                                    beta,
+                                    this.state.visualNumPolicy.value,
+                                    this.asyncPolicyFunction);
+                            }
+                        )
+                    }
+                } else {
+                    // the selected attribute is categorical
+                    this.getQueryTrueAnswer(null, this.asyncResFunction)
+                }
+            }
+        )
     };
 
     asyncResFunction() {
@@ -642,45 +851,59 @@ class PanelComponent extends Component {
     }
 
     plotTrueCounts = () => {
-        var CanvasJSChart = CanvasJSReact.CanvasJSChart;
         let trueAnsPoints = [];
-        const granularity = this.state.queryGranularity.value;
-        const lower = this.state.currentNumericalDomain.domain[0];
-        const upper = this.state.currentNumericalDomain.domain[1];
-        const trueCounts = this.state.trueRes;
-        const attrName = this.state.selectedAttr;
-        const granularityLabels = this.computeGranularity(granularity, lower, upper);
-        // console.log('the granularity labels are:', granularityLabels)
-        const numPredicates = trueCounts.length;
-        for (let i = 0; i < numPredicates; ++i) {
-            const x = (granularityLabels[i].lower + granularityLabels[i].upper) / 2;
-            if (i === 0) {
+        var CanvasJSChart = CanvasJSReact.CanvasJSChart;
+        let lower = null;
+        let upper = null;
+        if (this.state.selectedType === 'numerical') {
+            const granularity = this.state.queryGranularity.value;
+            lower = this.state.currentNumericalDomain.domain[0];
+            upper = this.state.currentNumericalDomain.domain[1];
+            const trueCounts = this.state.trueRes;
+            const attrName = this.state.selectedAttr;
+            const granularityLabels = this.computeGranularity(granularity, lower, upper);
+            // console.log('the granularity labels are:', granularityLabels)
+            const numPredicates = trueCounts.length;
+            for (let i = 0; i < numPredicates; ++i) {
+                const x = (granularityLabels[i].lower + granularityLabels[i].upper) / 2;
+                if (i === 0) {
+                    trueAnsPoints = trueAnsPoints.concat(
+                        {
+                            x: x,
+                            label: attrName + "<" + granularityLabels[i].upper.toString(),
+                            y: trueCounts[i]
+                        }
+                    )
+                } else if (i === numPredicates - 1) {
+                    trueAnsPoints = trueAnsPoints.concat(
+                        {
+                            x: x,
+                            label: granularityLabels[i].lower.toString() + "<=" + attrName,
+                            y: trueCounts[i]
+                        }
+                    )
+                } else {
+                    trueAnsPoints = trueAnsPoints.concat(
+                        {
+                            x: x,
+                            label: granularityLabels[i].lower.toString() + "<=" + attrName + "<" + granularityLabels[i].upper.toString(),
+                            y: trueCounts[i]
+                        }
+                    )
+                }
+            }
+        } else {
+            const numPredicates = this.state.trueRes.length;
+            for (let i = 0; i < numPredicates; ++i) {
                 trueAnsPoints = trueAnsPoints.concat(
                     {
-                        x: x,
-                        label: attrName + "<" + granularityLabels[i].upper.toString(),
-                        y: trueCounts[i]
-                    }
-                )
-            } else if (i === numPredicates - 1) {
-                trueAnsPoints = trueAnsPoints.concat(
-                    {
-                        x: x,
-                        label: granularityLabels[i].lower.toString() + "<=" + attrName,
-                        y: trueCounts[i]
-                    }
-                )
-            } else {
-                trueAnsPoints = trueAnsPoints.concat(
-                    {
-                        x: x,
-                        label: granularityLabels[i].lower.toString() + "<=" + attrName + "<" + granularityLabels[i].upper.toString(),
-                        y: trueCounts[i]
+                        label: this.state.currentCategoricalDomain[i],
+                        y: this.state.trueRes[i]
                     }
                 )
             }
         }
-        const options = {
+        let options = {
             height: 250,
             width: 275,
             animationEnabled: true,
@@ -688,12 +911,10 @@ class PanelComponent extends Component {
             theme: "light2", //"light1", "dark1", "dark2"
             title: {
                 text: 'True Counts',
-                fontSize: 16
+                fontSize: 15
             },
             axisX: {
                 labelAngle: 50,
-                minimum: lower,
-                maximum: upper
             },
             axisY: {
                 includeZero: true
@@ -708,11 +929,28 @@ class PanelComponent extends Component {
             data: [{
                 type: "column", //change type to bar, line, area, pie, etc
                 //indexLabel: "{y}", //Shows y value on all Data Points
+                name: this.state.selectedAttr,
+                showInLegend: true,
                 indexLabelFontColor: "#5A5757",
                 indexLabelPlacement: "outside",
                 color: "#6D78AD",
                 dataPoints: trueAnsPoints
             }]
+        }
+
+        if (this.state.selectedType === 'numerical') {
+            options.axisX.minimum = lower;
+            options.axisX.maximum = upper;
+        }
+
+        if (this.state.currentWorkload !== null) {
+            if (this.state.currentWorkload.value === '1D-Histogram') {
+                options.title.text = 'True Counts (Histogram)'
+            } else if (this.state.currentWorkload.value === '1D-Cumulative') {
+                options.title.text = 'True Counts (Cumulative)'
+            }
+        } else {
+            options.title.text = 'True Counts (Histogram)'
         }
 
         return (
@@ -729,16 +967,18 @@ class PanelComponent extends Component {
     plotNoisyCounts = (noisyCounts) => {
         var CanvasJSChart = CanvasJSReact.CanvasJSChart;
         let noisyAnsPoints = [];
-        const granularity = this.state.queryGranularity.value;
-        const lower = this.state.currentNumericalDomain.domain[0];
-        const upper = this.state.currentNumericalDomain.domain[1];
-        // let noisyCounts = this.state.noisyRes;
-        const attrName = this.state.selectedAttr;
-        const granularityLabels = this.computeGranularity(granularity, lower, upper);
-        const numPredicates = noisyCounts.length;
-        // console.log('This is the granularity labels:', granularityLabels)
-        // console.log('This is the granularity labels length:', this.state.noisyRes)
-        if (numPredicates === granularityLabels.length) {
+        let lower = null;
+        let upper = null;
+        if (this.state.selectedType === 'numerical') {
+            const granularity = this.state.queryGranularity.value;
+            lower = this.state.currentNumericalDomain.domain[0];
+            upper = this.state.currentNumericalDomain.domain[1];
+            // let noisyCounts = this.state.noisyRes;
+            const attrName = this.state.selectedAttr;
+            const granularityLabels = this.computeGranularity(granularity, lower, upper);
+            const numPredicates = noisyCounts.length;
+            // console.log('This is the granularity labels:', granularityLabels)
+            // console.log('This is the granularity labels length:', this.state.noisyRes)
             for (let i = 0; i < numPredicates; ++i) {
                 let y = 0;
                 const x = (granularityLabels[i].lower + granularityLabels[i].upper) / 2
@@ -771,8 +1011,22 @@ class PanelComponent extends Component {
                     )
                 }
             }
+        } else {
+            const numPredicates = noisyCounts.length;
+            for (let i = 0; i < numPredicates; ++i) {
+                let y = 0;
+                if (noisyCounts[i] >= 0) {
+                    y = noisyCounts[i];
+                }
+                noisyAnsPoints = noisyAnsPoints.concat(
+                    {
+                        label: this.state.currentCategoricalDomain[i],
+                        y: y,
+                    }
+                )
+            }
         }
-        const options = {
+        let options = {
             height: 250,
             width: 275,
             animationEnabled: true,
@@ -780,7 +1034,7 @@ class PanelComponent extends Component {
             theme: "light2", //"light1", "dark1", "dark2"
             title: {
                 text: 'Noisy Counts',
-                fontSize: 16
+                fontSize: 15
             },
             axisX: {
                 labelAngle: 50,
@@ -800,11 +1054,23 @@ class PanelComponent extends Component {
             data: [{
                 type: "column", //change type to bar, line, area, pie, etc
                 //indexLabel: "{y}", //Shows y value on all Data Points
+                name: this.state.selectedAttr,
+                showInLegend: true,
                 indexLabelFontColor: "#5A5757",
                 indexLabelPlacement: "outside",
                 color: "#6D78AD",
                 dataPoints: noisyAnsPoints
             }]
+        }
+
+        if (this.state.currentWorkload !== null) {
+            if (this.state.currentWorkload.value === '1D-Histogram') {
+                options.title.text = 'Noisy Counts (Histogram)'
+            } else if (this.state.currentWorkload.value === '1D-Cumulative') {
+                options.title.text = 'Noisy Counts (Cumulative)'
+            }
+        } else {
+            options.title.text = 'Noisy Counts (Histogram)'
         }
 
         return (
@@ -858,31 +1124,48 @@ class PanelComponent extends Component {
                 trueResult: false,  // make sure we can switch granularity
             })
         }
+        let alpha = null;
+        let beta = null;
+        if (this.state.alpha !== null) { alpha = this.state.alpha.value; }
+        if (this.state.beta !== null) { beta = this.state.beta.value; }
         // console.log('This is the query granularity: ', value.value)
         this.getQueryTrueAnswer(value.value, this.asyncResFunction)
         if (this.state.noisyResult) {
             this.setState({
                 noisyResult: false,  // make sure we are able to switch target epsilon
-            })
-            this.getQueryNoisyAnswer(value.value,
-                this.state.targetEpsilon.value,
-                null,
-                null,
-                Number.MAX_SAFE_INTEGER,
-                this.asyncNoisyFunction);
+            },
+                () => {
+                    let eps = null;
+                    if (this.state.targetEpsilon !== null) {
+                        eps = this.state.targetEpsilon.value;
+                    }
+                    this.getQueryNoisyAnswer(value.value,
+                        eps,
+                        alpha,
+                        beta,
+                        Number.MAX_SAFE_INTEGER,
+                        this.asyncNoisyFunction);
+                })
         }
 
         // update the policy threshold counts correspondingly as well
         if (this.state.policyResult) {
             this.setState({
                 policyResult: false,  // make sure we are able to switch policy thresholds
-            })
-            this.getQueryNoisyAnswer(value.value,
-                this.state.targetEpsilon.value,
-                null,
-                null,
-                this.state.visualNumPolicy.value,
-                this.asyncPolicyFunction);
+            },
+                () => {
+                    let eps = null
+                    if (this.state.targetEpsilon !== null) {
+                        eps = this.state.targetEpsilon.value
+                    }
+                    this.getQueryNoisyAnswer(value.value,
+                        eps,
+                        alpha,
+                        beta,
+                        this.state.visualNumPolicy.value,
+                        this.asyncPolicyFunction);
+                }
+            )
         }
     }
 
@@ -891,37 +1174,113 @@ class PanelComponent extends Component {
         this.setState({
             targetEpsilon: value
         })
+        let epsilon = value.value;
+        let queryGranularity = null;
+        let dp_policy = null;
+        if (this.state.selectedType === 'numerical') {
+            queryGranularity = this.state.queryGranularity.value;
+            dp_policy = Number.MAX_SAFE_INTEGER;
+        }
         if (this.state.noisyResult) {
             this.setState({
                 noisyResult: false,  // make sure we are able to switch target epsilon
-            })
+            },
+                () => {
+                    this.getQueryNoisyAnswer(queryGranularity,
+                        epsilon,
+                        null,
+                        null,
+                        dp_policy,
+                        this.asyncNoisyFunction);
+                })
+        } else {
+            this.getQueryNoisyAnswer(queryGranularity,
+                epsilon,
+                null,
+                null,
+                dp_policy,
+                this.asyncNoisyFunction);
         }
-        this.getQueryNoisyAnswer(this.state.queryGranularity.value,
-            value.value,
-            null,
-            null,
-            Number.MAX_SAFE_INTEGER,
-            this.asyncNoisyFunction);
         // update the policy threshold counts correspondingly as well
         if (this.state.policyResult) {
             this.setState({
                 policyResult: false,  // make sure we are able to switch policy thresholds
-            })
-            this.getQueryNoisyAnswer(this.state.queryGranularity.value,
-                this.state.targetEpsilon.value,
-                null,
-                null,
-                value.value,
-                this.asyncPolicyFunction);
+            },
+                () => {
+                    console.log("This is the threshold", this.state.visualNumPolicy)
+                    this.getQueryNoisyAnswer(queryGranularity,
+                        epsilon,
+                        null,
+                        null,
+                        this.state.visualNumPolicy.value,
+                        this.asyncPolicyFunction);
+                })
         }
     }
 
     // Update Noisy Count with threshold
     handleChangeThreshold = value => {
-        console.log('--------------------------', value);
+        let alpha = null;
+        let beta = null;
+        if (this.state.alpha !== null) { alpha = this.state.alpha.value; }
+        if (this.state.beta !== null) { beta = this.state.beta.value; }
         this.setState({
             visualNumPolicy: value,
-        })
+        },
+            () => {
+                // Current workaround, when we change a policy definition
+                // We want to update the policy of the database
+                if (this.state.policies.length === 0) {
+                    let policy = []
+                    for (let i = 0; i < this.state.databaseSchema.length; ++i) {
+                        if (this.state.databaseSchema[i].attrType === 'numerical') {
+                            let curPolicy = null;
+                            if (this.state.databaseSchema[i].attrName === this.state.selectedAttr) {
+                                curPolicy = {
+                                    attrName: this.state.databaseSchema[i].attrName,
+                                    policy: value.value
+                                }
+                            } else {
+                                curPolicy = {
+                                    attrName: this.state.databaseSchema[i].attrName,
+                                    policy: Number.MAX_SAFE_INTEGER
+                                }
+                            }
+                            policy = policy.concat(curPolicy)
+                        } else {
+                            let curPolicy = {
+                                attrName: this.state.databaseSchema[i].attrName,
+                                policy: this.state.databaseDomain[i].domain,
+                            }
+                            policy = policy.concat(curPolicy)
+                        }
+                    }
+                    console.log(policy)
+                    this.setState({
+                        policies: policy,
+                    },
+                        () => {
+                            // console.log(this.state.policies);
+                            this.props.updatePolicy(this.state.policies);
+                        }
+                    )
+                } else {
+                    console.log('We are here and this is', this.state.policies)
+                    let curPolicy = null;
+                    for (let i = 0; i < this.state.databaseSchema.length; ++i) {
+                        if (this.state.policies[i].attrName === this.state.selectedAttr) {
+                            curPolicy = this.state.policies;
+                            curPolicy[i].policy = value.value;
+                            break;
+                        }
+                    }
+                    this.setState({
+                        policies: curPolicy,
+                    },
+                        () => { this.props.updatePolicy(this.state.policies); }
+                    )
+                }
+            })
         if (this.state.policyResult) {
             this.setState({
                 policyResult: false,  // make sure we are able to switch policy thresholds
@@ -930,14 +1289,14 @@ class PanelComponent extends Component {
         if (this.state.targetEpsilon === null) {
             this.getQueryNoisyAnswer(this.state.queryGranularity.value,
                 null,
-                this.state.alpha,
-                this.state.beta,
+                alpha,
+                beta,
                 value.value, this.asyncPolicyFunction);
         } else {
             this.getQueryNoisyAnswer(this.state.queryGranularity.value,
                 this.state.targetEpsilon.value,
-                this.state.alpha,
-                this.state.beta,
+                alpha,
+                beta,
                 value.value, this.asyncPolicyFunction);
         }
     }
@@ -995,17 +1354,32 @@ class PanelComponent extends Component {
 
     // Ensure that query granularity is selected before we visualize them
     visualButton = () => {
-        if (this.state.queryGranularity === null) {
-            return (
-                null
-            )
+        if (this.state.selectedType === 'numerical') {
+            if (this.state.queryGranularity === null) {
+                return (
+                    null
+                )
+            } else {
+                return (
+                    <Button
+                        onClick={() =>
+                            this.visualizePolicy(this.state.alpha, this.state.beta)
+                        } style={{ width: 230, height: 40 }}>Visualize Policy</Button>
+                )
+            }
         } else {
-            return (
-                <Button
-                    onClick={() =>
-                        this.visualizePolicy(this.state.alpha, this.state.beta)
-                    } style={{ width: 230, height: 40 }}>Visualize Policy</Button>
-            )
+            if (this.state.currentWorkload === null) {
+                return (
+                    null
+                )
+            } else {
+                return (
+                    <Button
+                        onClick={() =>
+                            this.visualizePolicy(this.state.alpha, this.state.beta)
+                        } style={{ width: 230, height: 40 }}>Visualize Policy</Button>
+                )
+            }
         }
     }
 
@@ -1101,6 +1475,91 @@ class PanelComponent extends Component {
         )
     }
 
+    catPolicyPanelAcc = () => {
+        const { currentWorkload } = this.state
+        const { alpha } = this.state
+        const { beta } = this.state
+        return (
+            <Grid textAlign='left' class="numPolicyPanel">
+                <Grid.Row className='attr'>
+                    Name: {this.state.selectedAttr}
+                </Grid.Row>
+                <Grid.Row className='attr'>
+                    Type: {this.state.selectedType}
+                </Grid.Row>
+                <Grid.Row>
+                    <div> Query Type:
+                        <Select
+                            placeholder='Workload'
+                            className='inputEle'
+                            options={workloadOptions}
+                            defaultInputValue=''
+                            value={currentWorkload}
+                            onChange={this.handleChangeWorkload}
+                        />
+                    </div>
+                </Grid.Row>
+                <Grid.Row>
+                    <Select
+                        options={alphaOptions}
+                        placeholder='alpha'
+                        className='inputEleShortLeft'
+                        value={alpha}
+                        onChange={this.handleChangeAlpha} />
+                    <Select
+                        options={betaOptions}
+                        placeholder='beta'
+                        className='inputEleShortRight'
+                        value={beta}
+                        onChange={this.handleChangeBeta}
+                    />
+                </Grid.Row>
+                <Grid.Row style={{ margin: '0.3em', height: 60 }}>
+                    {this.visualButton()}
+                </Grid.Row>
+            </Grid >
+        )
+    }
+
+    catPolicyPanelPrivacyBudget = () => {
+        const { currentWorkload } = this.state
+        const { targetEpsilon } = this.state
+        return (
+            <Grid padding textAlign='left' style={{ margin_bottom: '0.1em', height: 20 }}>
+                <Grid.Row className='attr'>
+                    Name: {this.state.selectedAttr}
+                </Grid.Row>
+                <Grid.Row className='attr'>
+                    Type: {this.state.selectedType}
+                </Grid.Row>
+                <Grid.Row>
+                    <div> Query Type:
+                        <Select
+                            placeholder='Workload'
+                            className='inputEle'
+                            options={workloadOptions}
+                            value={currentWorkload}
+                            onChange={this.handleChangeWorkload}
+                        />
+                    </div>
+                </Grid.Row>
+                <Grid.Row>
+                    <div> Target Privacy Loss:
+                        <Select
+                            options={epsilonOptions}
+                            placeholder='Epsilon'
+                            className='inputEle'
+                            value={targetEpsilon}
+                            onChange={this.handleChangeEpsilon} />
+                    </div>
+                </Grid.Row>
+                <Grid.Row style={{ margin: '0.3em', height: 60 }}>
+                    {this.visualButton()}
+                </Grid.Row>
+            </Grid >
+        )
+    }
+
 
     policyPanel = () => {
         // we want to assign granularity Options dynamically
@@ -1109,54 +1568,9 @@ class PanelComponent extends Component {
                 return (
                     <Tabs>
                         <TabList>
-                            <Tab>Accuracy vs. Threshold</Tab>
                             <Tab>Privacy Budget vs. Threshold</Tab>
+                            <Tab>Accuracy vs. Threshold</Tab>
                         </TabList>
-                        <TabPanel>
-                            <Grid columns={2}>
-                                <Grid.Column style={{ width: 300 }}>
-                                    <Grid.Row className="policyPanel">
-                                        {this.numPolicyPanelAcc()}
-                                    </Grid.Row>
-                                    <Grid.Row className="policyVisual">
-                                        {this.policyGraph()}
-                                    </Grid.Row>
-                                </Grid.Column>
-                                <Grid.Column style={{ width: 600 }}>
-                                    <Grid.Row className='chartContainer'>
-                                        <Grid columns={2}>
-                                            <Grid.Column style={{ width: 300 }}>
-                                                <Grid.Row className="trueCount">
-                                                    {this.displayTrueCounts()}
-                                                </Grid.Row>
-                                                <Grid.Row>
-                                                    {this.numPolicyVisual()}
-                                                </Grid.Row>
-                                                <Grid.Row className="blowfishCount">
-                                                    {this.displayPolicyNoisyCounts()}
-                                                </Grid.Row>
-                                            </Grid.Column>
-                                            <Grid.Column style={{ width: 300 }}>
-                                                <Grid.Row className="trueCount">
-                                                    {this.displayNoisyCounts()}
-                                                </Grid.Row>
-                                                <Grid.Row>
-                                                    {this.numPolicySubmit()}
-                                                </Grid.Row>
-                                            </Grid.Column>
-                                        </Grid>
-                                    </Grid.Row>
-                                </Grid.Column>
-                            </Grid>
-                            {/* <Grid columns={1}>
-                                    <Grid.Column style={{ width: 400 }}>
-                                        {this.privacyPanelTheshold()}
-                                    </Grid.Column>
-                                </Grid>
-                            <Grid.Row>
-                                {this.policyGraph()}
-                            </Grid.Row> */}
-                        </TabPanel>
                         <TabPanel>
                             <Grid columns={3}>
                                 <Grid.Column style={{ width: 300 }}>
@@ -1194,76 +1608,127 @@ class PanelComponent extends Component {
                                 </Grid.Column>
                             </Grid>
                         </TabPanel>
+                        <TabPanel>
+                            <Grid columns={2}>
+                                <Grid.Column style={{ width: 300 }}>
+                                    <Grid.Row className="policyPanel">
+                                        {this.numPolicyPanelAcc()}
+                                    </Grid.Row>
+                                    <Grid.Row className="policyVisual">
+                                        {this.policyGraph()}
+                                    </Grid.Row>
+                                </Grid.Column>
+                                <Grid.Column style={{ width: 600 }}>
+                                    <Grid.Row className='chartContainer'>
+                                        <Grid columns={2}>
+                                            <Grid.Column style={{ width: 300 }}>
+                                                <Grid.Row className="trueCount">
+                                                    {this.displayTrueCounts()}
+                                                </Grid.Row>
+                                                <Grid.Row>
+                                                    {this.numPolicyVisual()}
+                                                </Grid.Row>
+                                                <Grid.Row className="blowfishCount">
+                                                    {this.displayPolicyNoisyCounts()}
+                                                </Grid.Row>
+                                            </Grid.Column>
+                                            <Grid.Column style={{ width: 300 }}>
+                                                <Grid.Row className="trueCount">
+                                                    {this.displayNoisyCounts()}
+                                                </Grid.Row>
+                                                <Grid.Row>
+                                                    {this.numPolicySubmit()}
+                                                </Grid.Row>
+                                            </Grid.Column>
+                                        </Grid>
+                                    </Grid.Row>
+                                </Grid.Column>
+                            </Grid>
+                        </TabPanel>
                     </Tabs>
                 )
             } else {
                 return (
-                    <Grid textAlign='left' style={{ margin_bottom: '0.1em', height: 20 }}>
-                        <Grid.Row className='attr'>
-                            Attribute Name: {this.state.selectedAttr}
-                        </Grid.Row>
-                        <Grid.Row className='attr'>
-                            Attribute Type: {this.state.selectedType}
-                        </Grid.Row>
-                        <Grid.Row>
-                            <label className='attr'>Select Workload:</label>
-                            <Select
-                                placeholder='workload'
-                                className='inputEle'
-                                options={workloadOptions}
-                                onChange={(event) => {
-                                    this.setState({
-                                        workloadSelected: true,
-                                        currentWorkload: event.value // one of histo, 1D-cdf or 2d-cdf
-                                    })
-                                }}>
-                            </Select>
-                        </Grid.Row>
-                        <Grid.Row>
-                            <Select
-                                options={alphaOptions}
-                                placeholder='alpha'
-                                className='inputEleShortLeft'
-                                onChange={(event) => {
-                                    // console.log(event);
-                                    // set alpha and beta to the current selected values
-                                    this.setState({
-                                        alpha: event.value
-                                    })
-                                }} />
-                            <Select
-                                options={betaOptions}
-                                placeholder='beta'
-                                className='inputEleShortRight'
-                                onChange={(event) => {
-                                    // console.log(event);
-                                    this.setState({
-                                        beta: event.value
-                                    })
-                                }
-                                }
-                            />
-                        </Grid.Row>
-                        <Grid.Row>
-                            {this.categorical_menu()}
-                        </Grid.Row>
-                        <Grid.Row></Grid.Row>
-                        <Grid.Row></Grid.Row>
-                        <Grid.Row></Grid.Row>
-                        <Grid.Row></Grid.Row>
-                        <Grid.Row></Grid.Row>
-                        <Grid.Row style={{ margin: '0.3em', height: 60 }}>
-                            <Button
-                                onClick={() =>
-                                    this.visualizePolicy(this.state.alpha, this.state.beta)
-                                } style={{ width: 230, height: 40 }}>Visualize Policy</Button>
-                        </Grid.Row>
-                        <Grid.Row >
-                            <Button onClick={
-                                this.toggleButtonState
-                            } style={{ width: 235, height: 40 }}>Confirm</Button>
-                        </Grid.Row>
-                    </Grid>
+                    <Tabs>
+                        <TabList>
+                            <Tab>Privacy Budget vs. Threshold</Tab>
+                            <Tab>Accuracy vs. Threshold</Tab>
+                        </TabList>
+                        <TabPanel>
+                            <Grid columns={3}>
+                                <Grid.Column style={{ width: 300 }}>
+                                    <Grid.Row className="policyPanel">
+                                        {this.catPolicyPanelPrivacyBudget()}
+                                    </Grid.Row>
+                                    <Grid.Row className="policyVisual">
+                                        {this.policyGraph()}
+                                    </Grid.Row>
+                                </Grid.Column>
+                                <Grid.Column style={{ width: 600 }}>
+                                    <Grid.Row className='chartContainer'>
+                                        <Grid columns={2}>
+                                            <Grid.Column style={{ width: 300 }}>
+                                                <Grid.Row className="trueCount">
+                                                    {this.displayTrueCounts()}
+                                                </Grid.Row>
+                                                <Grid.Row>
+                                                    {this.numPolicyVisual()}
+                                                </Grid.Row>
+                                                <Grid.Row className="blowfishCount">
+                                                    {this.displayPolicyNoisyCounts()}
+                                                </Grid.Row>
+                                            </Grid.Column>
+                                            <Grid.Column style={{ width: 300 }}>
+                                                <Grid.Row className="trueCount">
+                                                    {this.displayNoisyCounts()}
+                                                </Grid.Row>
+                                                <Grid.Row>
+                                                    {this.numPolicySubmit()}
+                                                </Grid.Row>
+                                            </Grid.Column>
+                                        </Grid>
+                                    </Grid.Row>
+                                </Grid.Column>
+                            </Grid>
+                        </TabPanel>
+                        <TabPanel>
+                            <Grid columns={2}>
+                                <Grid.Column style={{ width: 300 }}>
+                                    <Grid.Row className="policyPanel">
+                                        {this.catPolicyPanelAcc()}
+                                    </Grid.Row>
+                                    <Grid.Row className="policyVisual">
+                                        {this.policyGraph()}
+                                    </Grid.Row>
+                                </Grid.Column>
+                                <Grid.Column style={{ width: 600 }}>
+                                    <Grid.Row className='chartContainer'>
+                                        <Grid columns={2}>
+                                            <Grid.Column style={{ width: 300 }}>
+                                                <Grid.Row className="trueCount">
+                                                    {this.displayTrueCounts()}
+                                                </Grid.Row>
+                                                <Grid.Row>
+                                                    {this.numPolicyVisual()}
+                                                </Grid.Row>
+                                                <Grid.Row className="blowfishCount">
+                                                    {this.displayPolicyNoisyCounts()}
+                                                </Grid.Row>
+                                            </Grid.Column>
+                                            <Grid.Column style={{ width: 300 }}>
+                                                <Grid.Row className="trueCount">
+                                                    {this.displayNoisyCounts()}
+                                                </Grid.Row>
+                                                <Grid.Row>
+                                                    {this.numPolicySubmit()}
+                                                </Grid.Row>
+                                            </Grid.Column>
+                                        </Grid>
+                                    </Grid.Row>
+                                </Grid.Column>
+                            </Grid>
+                        </TabPanel>
+                    </Tabs>
                 )
             }
         } else {
@@ -1308,15 +1773,15 @@ class PanelComponent extends Component {
             exportEnabled: true,
             title: {
                 text: "Accuracy VS Thresholds",
-                fontSize: 16
+                fontSize: 15
             },
             axisX: {
                 title: "Thresholds",
-                titleFontSize: 16,
+                titleFontSize: 15,
                 interval: 1
             },
             axisY: {
-                titleFontSize: 16,
+                titleFontSize: 15,
                 titleFontColor: "#6D78AD",
                 lineColor: "#6D78AD",
                 labelFontColor: "#6D78AD",
@@ -1346,7 +1811,7 @@ class PanelComponent extends Component {
             data: [{
                 click: this.thresholdSelected,
                 type: "spline",
-                name: "Privacy Loss (Blowfish)",
+                name: "Accuracy (Blowfish)",
                 showInLegend: true,
                 xValueFormatString: "Threshold: ####",
                 yValueFormatString: "##0.###",
@@ -1406,10 +1871,12 @@ class PanelComponent extends Component {
                     y: this.state.selectedAccuracies[i]
                 }
             )
+            let y = 0;
+            if (this.state.selectedDPAccuracies[i] >= 0) { y = this.state.selectedDPAccuracies[i]; }
             dpAccuracy = dpAccuracy.concat(
                 {
                     x: this.state.epsilonArr[i],
-                    y: this.state.selectedDPAccuracies[i]
+                    y: y
                 }
             )
         }
@@ -1423,7 +1890,7 @@ class PanelComponent extends Component {
             exportEnabled: true,
             title: {
                 text: "Accuracy VS Privacy Budget",
-                fontSize: 16
+                fontSize: 15
             },
             axisX: {
                 title: "Privacy Budget",

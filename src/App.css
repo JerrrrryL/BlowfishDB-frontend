@@ -7,6 +7,47 @@
   pointer-events: none;
 }
 
+.navigateBar{
+  height: 1cm;
+}
+
+/* css for analyst panel */
+.privacyBudget{
+  margin-top: 1em;
+  margin-left: 1em;
+}
+
+.resultTable{
+  margin-top: -2em;
+  height: 25em;
+}
+
+.resultComparisonDesc{
+  margin-left: 1em;
+  margin-top: 0.15em;
+}
+
+.resultComparison{
+  margin-left: 0.5em;
+  margin-top: 1em;
+}
+
+.queryType{
+  margin-left: 2em;
+}
+
+/* The following is for description page */
+.blowfishHomepage{
+  margin-left: 40%;
+}
+
+.blowfishDesc{
+  margin-left: 20%;
+  margin-right: 20%;
+  font-size: 16px;
+}
+/* The above is for description page */
+
 .selectData {
   width: 20cm;
 }
@@ -33,7 +74,7 @@
 
 .trueCount{
   margin-top: 0.5em;
-  margin-left: -1.5em;
+  margin-left: -0.5em;
   height: 23em;
 }
 
@@ -77,12 +118,14 @@
 }
 
 .inputEleShortLeft{
+  margin-top: 0.5em;
   margin-right: 0.25em;
   height: 4ch;
   width: 14.5ch;
 }
 
 .inputEleShortRight{
+  margin-top: 0.5em;
   margin-left: 0.25em;
   height: 4ch;
   width: 14.5ch;
@@ -115,7 +158,7 @@
 }
 
 .blowfishCount{
-  margin-left: -1.5em;
+  margin-left: -0.5em;
 }
 
 .blowfishThreshold{
@@ -132,9 +175,23 @@
   margin-left: 11.5%;
 }
 
+.bottomPanelsAnalyst{
+  margin-top: -1em;
+  margin-left: 18.5%;
+}
+
 .mainPanelSize{
   height: 20cm;
   width: 40cm;
+}
+
+.analystNoisyResult{
+  margin-top: 0.5em;
+}
+
+.mainPanelSizeAnalyst{
+  height: 20cm;
+  width: 30cm;
 }
 
 .gridStyle{

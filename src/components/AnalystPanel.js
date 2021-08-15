@@ -17,14 +17,15 @@ const workloadOptions = [
 ]
 
 const alphaOptions = [
+    { value: 0.1, label: '0.1' },
     { value: 0.01, label: '0.01' },
-    // { value: 0.001, label: '0.001' },
+    { value: 0.001, label: '0.001' },
     // { value: 0.0001, label: '0.0001' }
 ]
 
 const betaOptions = [
     { value: 0.005, label: '0.005' },
-    // { value: 10, label: '10' },
+    { value: 0.0005, label: '0.0005' },
     // { value: 1, label: '1' }
 ]
 
@@ -939,7 +940,7 @@ class AnalystPanelComponent extends Component {
                 </Grid.Row>
                 <Grid.Row>
                     <div> Query Type:
-                    <Select
+                        <Select
                             placeholder='Workload'
                             className='inputEleShortLeft'
                             options={workloadOptions}
@@ -949,7 +950,7 @@ class AnalystPanelComponent extends Component {
                         />
                     </div>
                     <div> Query Granularity:
-                            <Select
+                        <Select
                             options={this.state.defaultPolicy}
                             placeholder='Granularity'
                             className='inputEleShortRight'

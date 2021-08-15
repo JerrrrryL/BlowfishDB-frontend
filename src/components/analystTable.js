@@ -190,7 +190,6 @@ function displayPlots(attrNames, noisyCounts, ranges, granus, workloads) {
             options.title.text = 'Noisy Counts (Cumulative)'
         } else {
             // This is the 2 dimensional case
-            console.log("XXDDXDXDXDXDXDXDXDX")
             options.title.text = 'Noisy Counts (2D Histogram)'
             options.data = [
                 {
@@ -321,7 +320,7 @@ function ConstructTable({ columns, data, counts }) {
         <Grid columns={1}>
             <Grid.Row className="privacyBudget">
                 The query results will be summarized in the table below
-                </Grid.Row>
+            </Grid.Row>
             <Grid.Row className="resultTable">
                 <Styles>
                     <table {...getTableProps()}>

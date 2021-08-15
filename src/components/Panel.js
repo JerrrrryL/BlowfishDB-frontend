@@ -745,6 +745,8 @@ class PanelComponent extends Component {
     handleChangeWorkload = value => {
         this.setState({
             workloadSelected: true,
+            displayAccuracyComparison: false,
+            attrPolicy: false,
             currentWorkload: value
         },
             () => {
@@ -1566,6 +1568,7 @@ class PanelComponent extends Component {
         this.setState({
             noisyResult: false,
             policyResult: false,
+            attrPolicy: false,
             displayAccuracyComparison: false,
         })
     }
@@ -1796,7 +1799,7 @@ class PanelComponent extends Component {
                 labelFontColor: "#6D78AD",
                 tickColor: "#6D78AD",
                 maximum: 1,
-                minimum: accuracyVal - 0.005,
+                minimum: accuracyVal - 0.05,
                 stripLines: [
                     {
                         label: "Differential Privacy",

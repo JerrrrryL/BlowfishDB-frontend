@@ -34,18 +34,26 @@ class PolicyGraph extends Component {
         let w = 280;
         let h = 280;
         let nodesEdges = []
+        let displayNodes = 5;
         // this is the case when we are dealing with categorical data
         if (this.props.attrType === 'categorical') {
             // assign values inside the domain to be nodes
-            for (let i = 0; i < this.props.attributeDomain.length; ++i) {
+            let subDomain = [];
+            if (this.props.attributeDomain.length < displayNodes) {
+                subDomain = this.props.attributeDomain;
+            } else {
+                subDomain = this.props.attributeDomain.slice(0, displayNodes);
+            }
+            for (let i = 0; i < subDomain.length; ++i) {
                 // console.log(this.props.attributeDomain[i])
                 let curNode = {
-                    data: { id: this.props.attributeDomain[i].value, label: this.props.attributeDomain[i].label },
-                    position: { x: 10, y: 50 },
+                    data: { id: subDomain[i].value, label: subDomain[i].label },
+                    position: { x: 200, y: 50 },
                     style: {
                         'background-color': '#d4d4d4',
                         "text-valign": "center",
-                        "text-halign": "center"
+                        "text-halign": "center",
+                        "font-size": 12,
                     }
                 }
                 nodesEdges = nodesEdges.concat(curNode)
@@ -53,21 +61,48 @@ class PolicyGraph extends Component {
             // assign values in the policy set to be edges
             // Note that this will be a clique in the contained set
             // console.log(this.props.sensitiveSet)
-            if (this.props.sensitiveSet !== null) {
-                for (let i = 0; i < this.props.sensitiveSet.length; ++i) {
-                    for (let j = i + 1; j < this.props.sensitiveSet.length; ++j) {
-                        let curEdge = {
-                            data: { source: this.props.sensitiveSet[i].value, target: this.props.sensitiveSet[j].value },
-                            style: {
-                                'line-color': '#000000',
-                                'width': 1
-                            }
+            for (let i = 0; i < subDomain.length; ++i) {
+                for (let j = i + 1; j < subDomain.length; ++j) {
+                    let curEdge = {
+                        data: { source: subDomain[i].value, target: subDomain[j].value },
+                        style: {
+                            'line-color': '#000000',
+                            'width': 1
                         }
-                        nodesEdges = nodesEdges.concat(curEdge)
                     }
+                    nodesEdges = nodesEdges.concat(curEdge)
                 }
             }
-        } else {
+            let layout = {
+                name: 'circle',
+
+                fit: false, // whether to fit to viewport
+                padding: 10, // fit padding
+                boundingBox: { x1, y1, w, h }, // constrain layout bounds; { x1, y1, x2, y2 } or { x1, y1, w, h }
+                animate: true, // whether to transition the node positions
+                animationDuration: 5, // duration of animation in ms if enabled
+                animationEasing: undefined, // easing of animation if enabled
+                radius: 105,
+                animateFilter: function (node, i) { return true; },
+                ready: undefined, // callback on layoutready
+                stop: undefined, // callback on layoutstop
+                nodeSeparation: 4,
+                transform: function (node, position) { return position; } // transform a given node position. Useful for changing flow direction in discrete layouts 
+            };
+            y1 -= 10;
+            x1 -= 5;
+            return (
+                <Grid.Row> A subgraph of 5 nodes is displayed below. Displayed Policy: Differential Privacy
+                    <CytoscapeComponent
+                        elements={nodesEdges}
+                        style={{ width: this.state.w, height: this.state.h }}
+                        cy={(cy) => { this.cy = cy }}
+                        layout={layout}
+                    />
+                </Grid.Row>
+            )
+        }
+        else {
             // when attribute type is numerical
             // console.log(this.props.attributeDomain)
             // console.log(this.props.attrThreshold)
@@ -76,7 +111,6 @@ class PolicyGraph extends Component {
             const lowerBound = this.props.attributeDomain.domain[0];
             const upperBound = this.props.attributeDomain.domain[1];
             let subGraph = false;
-            let displayNodes = 5;
             if (Math.ceil((upperBound - lowerBound) / granularity) < displayNodes) {
                 displayNodes = Math.ceil((upperBound - lowerBound) / granularity)
             } else {

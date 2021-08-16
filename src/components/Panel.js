@@ -1290,17 +1290,33 @@ class PanelComponent extends Component {
             })
         }
         if (this.state.targetEpsilon === null) {
-            this.getQueryNoisyAnswer(this.state.queryGranularity.value,
-                null,
-                alpha,
-                beta,
-                value.value, this.asyncPolicyFunction);
+            if (this.state.queryGranularity === null) {
+                this.getQueryNoisyAnswer(null,
+                    null,
+                    alpha,
+                    beta,
+                    value.value, this.asyncPolicyFunction);
+            } else {
+                this.getQueryNoisyAnswer(this.state.queryGranularity.value,
+                    null,
+                    alpha,
+                    beta,
+                    value.value, this.asyncPolicyFunction);
+            }
         } else {
-            this.getQueryNoisyAnswer(this.state.queryGranularity.value,
-                this.state.targetEpsilon.value,
-                alpha,
-                beta,
-                value.value, this.asyncPolicyFunction);
+            if (this.state.queryGranularity === null) {
+                this.getQueryNoisyAnswer(null,
+                    this.state.targetEpsilon.value,
+                    alpha,
+                    beta,
+                    value.value, this.asyncPolicyFunction);
+            } else {
+                this.getQueryNoisyAnswer(this.state.queryGranularity.value,
+                    this.state.targetEpsilon.value,
+                    alpha,
+                    beta,
+                    value.value, this.asyncPolicyFunction);
+            }
         }
     }
 
